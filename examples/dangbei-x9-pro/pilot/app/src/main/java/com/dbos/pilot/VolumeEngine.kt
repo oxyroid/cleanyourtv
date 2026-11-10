@@ -70,12 +70,27 @@ object VolumeEngine {
         sync()
     }
 
-    /** Point the prop at the switch; while on, keep the stock bar dead. */
+    /**
+     * Point the prop at the switch; while on, keep the stock bar dead and
+     * tame the hold-to-sweep speed.
+     *
+     * The ROM's AudioService.adjustStreamVolume reads
+     * sys.repeated_key_vol_steps as the per-repeat step when a volume key
+     * repeats (found in the dex: flags&0x4000 → getInt(prop, default);
+     * with the fine-step branch active the default path steps ~10 indices
+     * per repeat × ~7 repeats/s ≈ 75/s — a full sweep in ~1.3 s, impossible
+     * to stop precisely). 2 ≈ 15/s, a full sweep in ~6 s. Not a persist
+     * prop — blanked at boot, re-asserted by every sync().
+     */
     @JvmStatic
     fun sync() {
         val want = if (enabled) "1" else "10"
         if (LocalAdb.shell("getprop persist.vendor.brand.simple", 4000)?.trim() != want) {
             LocalAdb.shell("setprop persist.vendor.brand.simple $want", 4000)
+        }
+        val rep = if (enabled) "2" else ""
+        if (LocalAdb.shell("getprop sys.repeated_key_vol_steps", 4000)?.trim() != rep) {
+            LocalAdb.shell("setprop sys.repeated_key_vol_steps \"$rep\"", 4000)
         }
         if (enabled) suppressStockBar()
     }
