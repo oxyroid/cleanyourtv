@@ -4,33 +4,30 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
- * User configuration. Every automated feature has its own switch; all three
- * entry points (settings panels, WebUI, HTTP API) write the same store.
+ * User configuration. One store behind all three entry points (TV UI, WebUI,
+ * HTTP API).
  *
- * Defaults are chosen so the app never changes factory device behavior just
- * by being installed: logd ships stopped on this ROM, so it stays off unless
- * the user turns it on. OTA blocking is the one exception — updates are what
- * break customized sets, so blocking is the safer default.
+ * Inactive by default where an action would change factory device behavior
+ * merely by installing the app (logd ships stopped). OTA blocking is the one
+ * exception: updates are what break customized sets.
  */
 public final class Config {
 
     public interface Key {
-        String HOMEGUARD  = "homeguard_on";  // accessibility home guard
-        String HOMEFIX    = "homefix_on";    // post-boot am start fallback
-        String ADBD       = "adbd_on";       // start adbd after boot
-        String ANNOUNCE   = "announce_on";   // UDP presence broadcast
-        String FINEVOL    = "finevol_on";    // volume keys: overlay + curve correction
-        String VOLOSD     = "volosd_on";     // suppress the stock volume bar
-        String LOGD       = "logd_on";       // keep the system log daemon running
-        String OTABLOCK   = "ota_block_on";  // keep the system update engine stopped
-        String VOLCURVE   = "volcurve";      // better-audio preset (string)
-        String HOMETARGET = "home_target";   // guard target launcher (string)
+        String HOMEGUARD  = "homeguard_on";   // accessibility home guard
+        String HOMEFIX    = "homefix_on";     // post-boot am start fallback
+        String ADBD       = "adbd_on";        // start adbd after boot
+        String ANNOUNCE   = "announce_on";    // UDP presence broadcast
+        String PERCEPTUAL = "perceptual_on";  // volume keys step 1 level instead of 10
+        String LOGD       = "logd_on";        // keep the system log daemon running
+        String OTABLOCK   = "ota_block_on";   // keep the system update engine stopped
+        String HOMETARGET = "home_target";    // guard target launcher (string)
+        // Legacy, migrated away in migrate().
+        String OLD_CURVE  = "volcurve";
     }
 
-    /** Marker meaning: not a real key; titles get a " *" suffix when the user
-     *  has moved this value away from its default. */
+    /** Titles get a " *" suffix when the value is away from its default. */
     public static boolean defaultOf(String key) {
-        // Everything defaults to on except logd (factory-shipped stopped).
         return !Key.LOGD.equals(key);
     }
 
@@ -53,44 +50,62 @@ public final class Config {
 
     public static void setStr(Context c, String key, String val) {
         sp(c).edit().putString(key, val).apply();
-        android.util.Log.i(PilotService.TAG, "config " + key + " -> " + val);
     }
 
-    /** Current value differs from the default → the UI marks the row. */
+    public static int getInt(Context c, String key, int def) {
+        return sp(c).getInt(key, def);
+    }
+
+    public static void setInt(Context c, String key, int val) {
+        sp(c).edit().putInt(key, val).apply();
+    }
+
     public static boolean changedFromDefault(Context c, String key) {
         return get(c, key) != defaultOf(key);
     }
 
     /**
-     * Apply a better-audio preset: store the name and derive the low-level
-     * switches. The UI is a single switch (perceptual on/off); the switches
-     * stay in the store for the WebUI/API. Re-selecting restores defaults.
+     * Old versions stored a preset name ("stock"/"perceptual"/"fine100"/
+     * "step30") plus derived switches. Fold that into the single switch once:
+     * anything that was not stock was the perceptual chain in some form.
      */
-    public static void applyPreset(Context c, String name) {
-        BetterAudio.Preset p = BetterAudio.get(name);
-        setStr(c, Key.VOLCURVE, p.name);
-        boolean stock = BetterAudio.STOCK.equals(p.name);
-        set(c, Key.FINEVOL, !stock);
-        set(c, Key.VOLOSD, p.overrideOsd);
+    public static void migrate(Context c) {
+        SharedPreferences sp = sp(c);
+        if (!sp.contains(Key.OLD_CURVE) || sp.contains(Key.PERCEPTUAL)) return;
+        boolean perceptual = !"stock".equals(sp.getString(Key.OLD_CURVE, "stock"));
+        sp.edit().putBoolean(Key.PERCEPTUAL, perceptual).remove(Key.OLD_CURVE).apply();
+        android.util.Log.i(PilotService.TAG, "config migrated: perceptual=" + perceptual);
     }
 
-    /** Restore Pilot's default configuration (all switches and presets). */
+    /** Restore defaults (every switch; the volume itself lives in the system). */
     public static void reset(Context c) {
         sp(c).edit().clear().apply();
         android.util.Log.i(PilotService.TAG, "config reset to defaults");
     }
 
-    /** JSON view: {"homeguard_on":true,...,"volcurve":"perceptual","home_target":"auto"} */
     public static String toJson(Context c) {
         return "{\"" + Key.HOMEGUARD + "\":" + get(c, Key.HOMEGUARD)
              + ",\"" + Key.HOMEFIX + "\":" + get(c, Key.HOMEFIX)
              + ",\"" + Key.ADBD + "\":" + get(c, Key.ADBD)
              + ",\"" + Key.ANNOUNCE + "\":" + get(c, Key.ANNOUNCE)
-             + ",\"" + Key.FINEVOL + "\":" + get(c, Key.FINEVOL)
-             + ",\"" + Key.VOLOSD + "\":" + get(c, Key.VOLOSD)
+             + ",\"" + Key.PERCEPTUAL + "\":" + get(c, Key.PERCEPTUAL)
              + ",\"" + Key.LOGD + "\":" + get(c, Key.LOGD)
              + ",\"" + Key.OTABLOCK + "\":" + get(c, Key.OTABLOCK)
-             + ",\"" + Key.VOLCURVE + "\":" + PilotService.js(getStr(c, Key.VOLCURVE, BetterAudio.PERCEPTUAL))
-             + ",\"" + Key.HOMETARGET + "\":" + PilotService.js(getStr(c, Key.HOMETARGET, "auto")) + "}";
+             + ",\"" + Key.HOMETARGET + "\":" + js(getStr(c, Key.HOMETARGET, "auto")) + "}";
     }
+
+    /** JSON string literal, package-local copy (PilotService.js is equivalent). */
+    static String js(String s) {
+        if (s == null) return "null";
+        StringBuilder b = new StringBuilder("\"");
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '"' || ch == '\\') b.append('\\').append(ch);
+            else if (ch < 0x20) b.append(String.format("\\u%04x", (int) ch));
+            else b.append(ch);
+        }
+        return b.append('"').toString();
+    }
+
+    private Config() {}
 }

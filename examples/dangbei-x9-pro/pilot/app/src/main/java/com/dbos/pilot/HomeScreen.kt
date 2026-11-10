@@ -149,8 +149,7 @@ private fun askRecommend(
 ) {
     val change = StringBuilder()
     val keep = StringBuilder()
-    val curve = Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)
-    if (!BetterAudio.PERCEPTUAL.equals(curve)) change.append(ctx.getString(R.string.rec_vol)).append('\n')
+    if (!Config.get(ctx, Config.Key.PERCEPTUAL)) change.append(ctx.getString(R.string.rec_vol)).append('\n')
     else keep.append(ctx.getString(R.string.rec_vol_already)).append('\n')
     if (!Config.get(ctx, Config.Key.HOMEGUARD)) change.append(ctx.getString(R.string.rec_guard)).append('\n')
     else keep.append(ctx.getString(R.string.rec_guard_already)).append('\n')
@@ -176,11 +175,10 @@ private fun askRecommend(
 
 /** After confirmation: apply, self-grant if needed, report the outcome. */
 private fun applyRecommend(ctx: android.content.Context, popup: (String, Long) -> Unit) {
-    Config.applyPreset(ctx, BetterAudio.PERCEPTUAL)
+    VolumeEngine.setEnabled(true)
     Config.set(ctx, Config.Key.HOMEGUARD, true)
     Config.set(ctx, Config.Key.HOMEFIX, true)
     Config.set(ctx, Config.Key.OTABLOCK, true)
-    ctx.sendService(PilotService.ACT_APPLY_VOLUME)
     if (!HomeGuardService.connected) {
         popup(ctx.getString(R.string.grant_wait), 2000)
         runAndPopup(ctx, { PilotService.selfGrant(ctx) }, { t, ms ->

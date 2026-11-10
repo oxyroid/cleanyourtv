@@ -65,7 +65,6 @@ fun AboutScreen() {
                         ctx.getString(R.string.reset_confirm),
                     ) {
                         Config.reset(ctx)
-                        ctx.sendService(PilotService.ACT_APPLY_VOLUME)
                         ui.popup(ctx.getString(R.string.reset_done), 2600)
                     }
                 },

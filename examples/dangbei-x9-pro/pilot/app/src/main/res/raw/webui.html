@@ -80,8 +80,8 @@
 </div>
 
 <div class="card">
-  <h2>感知音量</h2>
-  <label class="toggle"><div>感知音量<div class="desc">100 阶均匀步进，底端 −80 dB；关闭即恢复原厂</div></div>
+  <h2>精细音量</h2>
+  <label class="toggle"><div>精细音量<div class="desc">每次按键 ±1 档（0–100），长按连调；关闭即恢复原厂</div></div>
     <span class="sw"><input type="checkbox" id="perc"><i></i></span></label>
 </div>
 
@@ -129,7 +129,7 @@ async function refresh() {
     const g = document.getElementById('m-guard');
     g.textContent = d.guard ? '在线' : '离线';
     g.className = d.guard ? 'st-ok' : 'st-bad';
-    document.getElementById('m-vol').textContent = d.volNative + ' · ' + d.volCurve + '(' + d.curveSteps + ')';
+    document.getElementById('m-vol').textContent = (d.perceptual ? '±1 档' : '原厂') + ' · 音量 ' + d.volIndex + '/100';
     const lg = document.getElementById('m-logd');
     lg.textContent = d.logd;
     lg.className = d.logd === 'running' ? 'st-ok' : 'st-dim';
@@ -145,7 +145,7 @@ async function refresh() {
       if (el) el.checked = c[k];
     }
     const perc = document.getElementById('perc');
-    if (perc) perc.checked = (c.volcurve !== 'stock');
+    if (perc) perc.checked = !!c.perceptual_on;
   } catch (e) {}
 }
 
@@ -159,9 +159,9 @@ document.querySelectorAll('.sw input').forEach(el => {
 });
 
 document.getElementById('perc').addEventListener('change', async () => {
-  const v = document.getElementById('perc').checked ? 'perceptual' : 'stock';
-  await fetch(q('/config?volcurve=' + v));
-  toast('感知音量 → ' + (document.getElementById('perc').checked ? '开' : '关'));
+  const v = document.getElementById('perc').checked ? '1' : '0';
+  await fetch(q('/config?perceptual_on=' + v));
+  toast('精细音量 → ' + (document.getElementById('perc').checked ? '开' : '关'));
   setTimeout(refresh, 500);
 });
 

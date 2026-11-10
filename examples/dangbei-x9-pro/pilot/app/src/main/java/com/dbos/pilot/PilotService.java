@@ -42,13 +42,13 @@ import java.util.concurrent.TimeUnit;
  *  - UDP presence on :9999 ("DBOS?" → identity JSON) and the startup broadcast.
  *  - Maintenance loop (fast at boot, every 5 minutes when settled):
  *      · adbd up (the ROM ships it configured but never started),
- *      · native volume steps (persist.vendor.brand.simple=1),
- *      · stock volume bar suppressed (setVolumeController(null), transaction
- *        92 on this firmware),
  *      · logd up when the user opted in (the ROM ships it stopped),
- *      · the A/B update engine stopped when OTA blocking is on,
- *      · the perceptual curve's master-volume stage re-pinned.
+ *      · the A/B update engine stopped when OTA blocking is on.
  *    Everything needing a shell identity goes through LocalAdb.
+ *
+ * The volume chain needs no maintenance: it follows AOSP's design — the
+ * stream index lives in AudioService (persisted by the system), VolumeEngine
+ * only writes it with the public API, so there is no shadow state to repair.
  */
 public class PilotService extends Service {
 
@@ -61,14 +61,12 @@ public class PilotService extends Service {
     public static final int NOTIF_ID = 1001;
 
     /** Maintenance-loop actions invoked from the settings panels via intents. */
-    public static final String ACT_APPLY_VOLUME = "apply_volume";
     public static final String ACT_REPAIR_GUARD = "repair_guard";
     public static final String ACT_GUARD_OFF   = "guard_off";
     public static final String ACT_HOME_FIX    = "home_fix";
 
     public static volatile String lastStatus = "init";
     public static volatile String adbdState = "?";
-    public static volatile String volNativeState = "init";
     public static volatile String otaState = "init";
 
     /** The live service instance (the settings UI reads config through it). */
@@ -87,9 +85,10 @@ public class PilotService extends Service {
         startHttp();
         startUdp();
         scheduleKeepJob();
-        // Volume curve correction: a plain VOLUME_CHANGED_ACTION receiver,
-        // independent of the accessibility service.
-        VolCurve.install(this);
+        // Volume chain: AOSP design — the system owns the volume; the
+        // engine only steps it per key press while enabled.
+        Config.migrate(this);
+        VolumeEngine.start(this);
 
         // Start adbd once system_server is up (switch-controlled, retried).
         if (Config.get(this, Config.Key.ADBD)) {
@@ -128,7 +127,7 @@ public class PilotService extends Service {
                 }
             });
         }
-        // Maintenance: volume chain, logd, OTA block, master-volume re-pin.
+        // Maintenance: logd, OTA block.
         pool.execute(new Runnable() {
             @Override public void run() { maintainLoop(0); }
         });
@@ -140,9 +139,7 @@ public class PilotService extends Service {
             final String act = intent.getAction();
             pool.execute(new Runnable() {
                 @Override public void run() {
-                    if (ACT_APPLY_VOLUME.equals(act)) {
-                        maintainLoop(6);
-                    } else if (ACT_REPAIR_GUARD.equals(act)) {
+                    if (ACT_REPAIR_GUARD.equals(act)) {
                         ensureHomeGuard(0);
                     } else if (ACT_GUARD_OFF.equals(act)) {
                         disableHomeGuard(PilotService.this);
@@ -220,18 +217,6 @@ public class PilotService extends Service {
 
     // ---------------- maintenance loop ----------------
     //
-    // Volume chain:
-    //  1) native single steps: persist.vendor.brand.simple=1 (factory value
-    //     10 → step ×5). A ROM branch in AudioService, verified by
-    //     disassembly; persist, survives reboots.
-    //  2) stock bar suppression: service call audio 92 =
-    //     IAudioService.setVolumeController(null) — the transaction code read
-    //     from this firmware's IAudioService$Stub; the shell holds
-    //     STATUS_BAR_SERVICE. SystemUI re-registers at every *boot* (not on
-    //     restart — tested), so this is re-checked and re-cut here. The checks
-    //     must read the controller through the shell channel: the app's own
-    //     uid gets an empty dumpsys under this ROM's SELinux policy.
-    //
     // logd: ships stopped; brought up when the user opts in.
     //
     // OTA: the update front-end (com.xgimi.upgrade) is a uid-1000 system
@@ -247,31 +232,7 @@ public class PilotService extends Service {
             String st = sh("getprop init.svc.adbd").trim();
             if (!"running".equals(st)) ensureAdbd(0);
 
-            boolean fine = Config.get(this, Config.Key.FINEVOL);
-            boolean osd  = Config.get(this, Config.Key.VOLOSD);
-
-            // 1) native step size
-            String simple = sh("getprop persist.vendor.brand.simple").trim();
-            if (fine && !"1".equals(simple)) {
-                String r = LocalAdb.shell("setprop persist.vendor.brand.simple 1");
-                volNativeState = "brand.simple->1 " + (r.isEmpty() ? "ok" : r);
-            } else if (!fine && !"10".equals(simple)) {
-                String r = LocalAdb.shell("setprop persist.vendor.brand.simple 10");
-                volNativeState = "brand.simple->10 " + (r.isEmpty() ? "ok" : r);
-            }
-
-            // 2) stock volume bar
-            if (osd) {
-                String ctrl = LocalAdb.shell("dumpsys audio | grep mVolumeController");
-                if (!ctrl.contains("(null")) {
-                    String r = LocalAdb.shell("service call audio 92");
-                    volNativeState += " | volosd " + (r.contains("00000000") ? "cut" : r);
-                }
-            } else if (attempt == 0) {
-                volNativeState += " | volosd off (stock bar returns after a reboot)";
-            }
-
-            // 3) logd
+            // logd
             if (Config.get(this, Config.Key.LOGD)) {
                 String logd = sh("getprop init.svc.logd").trim();
                 if (!"running".equals(logd)) {
@@ -295,13 +256,8 @@ public class PilotService extends Service {
                     otaState = "update_engine " + eng;
                 }
             }
-
-            // 5) master-volume re-pin: heals the audioserver resetting the
-            //    master stage to 1.0 behind our back (restart), and restores
-            //    the saved level's rendering after a reboot.
-            VolCurve.repin(this, true);
         } catch (Throwable t) {
-            volNativeState = "maintain err: " + t;
+            Log.e(TAG, "maintain", t);
         }
         if (attempt < 8) {
             sleep(attempt < 3 ? 20000 : 60000);
@@ -313,8 +269,7 @@ public class PilotService extends Service {
     }
 
     // ---------------- night gain ----------------
-    // (removed with the preset radio: the perceptual curve's master-volume
-    // stage covers the sub-floor range — see BetterAudio / VolCurve)
+    // (gone: the volume chain now follows AOSP's design — see VolumeEngine)
 
     // ---------------- boot home fix (fallback layer) ----------------
 
@@ -608,27 +563,17 @@ public class PilotService extends Service {
         if ("/config".equals(path)) {
             for (String k : new String[] {
                     Config.Key.HOMEGUARD, Config.Key.HOMEFIX, Config.Key.ADBD,
-                    Config.Key.ANNOUNCE, Config.Key.FINEVOL, Config.Key.VOLOSD,
-                    Config.Key.LOGD, Config.Key.OTABLOCK}) {
+                    Config.Key.ANNOUNCE, Config.Key.PERCEPTUAL, Config.Key.LOGD,
+                    Config.Key.OTABLOCK}) {
                 if (p.containsKey(k))
                     Config.set(this, k, !"0".equals(p.get(k)));
             }
-            boolean curveChanged = false;
-            if (p.containsKey("volcurve")) {
-                String v = p.get("volcurve");
-                if (BetterAudio.isValid(v)) {
-                    Config.applyPreset(this, v);
-                    curveChanged = true;
-                }
+            // Volume-chain changes take effect immediately, not next round.
+            if (p.containsKey(Config.Key.PERCEPTUAL)) {
+                VolumeEngine.setEnabled("1".equals(p.get(Config.Key.PERCEPTUAL)));
             }
             if (p.containsKey(Config.Key.HOMETARGET)) {
                 Config.setStr(this, Config.Key.HOMETARGET, p.get(Config.Key.HOMETARGET));
-            }
-            // Volume-chain changes take effect immediately, not next round.
-            if (curveChanged || p.containsKey(Config.Key.FINEVOL) || p.containsKey(Config.Key.VOLOSD)) {
-                pool.execute(new Runnable() {
-                    @Override public void run() { maintainLoop(6); }
-                });
             }
             return Config.toJson(this);
         }
@@ -640,23 +585,17 @@ public class PilotService extends Service {
             return Config.toJson(this);
         }
         if ("/vol".equals(path)) {
-            android.media.AudioManager am = (android.media.AudioManager)
-                    getSystemService(AUDIO_SERVICE);
-            int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-            String i = p.get("i");
-            if (i != null && !i.isEmpty()) {
-                int next = cur;
-                if (i.startsWith("+")) next = cur + Integer.parseInt(i.substring(1));
-                else if (i.startsWith("-")) next = cur - Integer.parseInt(i.substring(1));
-                else next = Integer.parseInt(i);
-                int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
-                if (next < 0) next = 0;
-                if (next > max) next = max;
-                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, next, 0);
-                cur = next;
+            // The stream index IS the volume; `l` and `i` are aliases.
+            String v = p.get("l") != null && !p.get("l").isEmpty() ? p.get("l") : p.get("i");
+            if (v != null && !v.isEmpty()) {
+                int cur = VolumeEngine.level();
+                int next = v.startsWith("+") ? cur + Integer.parseInt(v.substring(1))
+                         : v.startsWith("-") ? cur - Integer.parseInt(v.substring(1))
+                         : Integer.parseInt(v);
+                VolumeEngine.setLevel(next);
             }
-            return "{\"vol\":" + cur + ",\"max\":"
-                    + am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) + "}";
+            return "{\"vol\":" + VolumeEngine.level()
+                    + ",\"perceptual\":" + VolumeEngine.isEnabled() + "}";
         }
         if ("/adbstart".equals(path)) {
             ensureAdbd(0);
@@ -712,11 +651,8 @@ public class PilotService extends Service {
         r.append(",\"guard\":").append(HomeGuardService.connected);
         r.append(",\"guardStatus\":").append(js(HomeGuardService.status));
         r.append(",\"guardTarget\":").append(js(HomeGuardService.target));
-        r.append(",\"volNative\":").append(js(volNativeState));
-        r.append(",\"brandSimple\":").append(js(sh("getprop persist.vendor.brand.simple").trim()));
-        r.append(",\"volCurve\":").append(js(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)));
-        r.append(",\"curveSteps\":").append(BetterAudio.get(
-                Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)).steps);
+        r.append(",\"perceptual\":").append(VolumeEngine.isEnabled());
+        r.append(",\"volIndex\":").append(VolumeEngine.level());
         r.append(",\"homeTarget\":").append(js(Config.getStr(this, Config.Key.HOMETARGET, HomeLauncher.AUTO)));
         r.append(",\"logd\":").append(js(sh("getprop init.svc.logd").trim()));
         r.append(",\"ota\":").append(js(otaState));

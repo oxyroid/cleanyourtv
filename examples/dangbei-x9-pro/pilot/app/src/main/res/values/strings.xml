@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DBOS Pilot</string>
-    <string name="homeguard_desc">Watches for the stock launcher coming to the front and switches back to the launcher you chose. Also draws the exact-volume overlay.</string>
+    <string name="homeguard_desc">Watches for the stock launcher coming to the front and switches back to the launcher you chose.</string>
 
     <!-- splash -->
     <string name="splash_tag">A small toolbox for a cleaner TV</string>
@@ -16,14 +16,16 @@
     <string name="st_guard">Home guard</string>
     <string name="st_shell">Shell</string>
     <string name="st_ota">Update blocked</string>
-    <string name="st_curve">curve: %1$s</string>
+    <string name="vol_mode_perc">step 1</string>
+    <string name="vol_mode_stock">factory</string>
+    <string name="st_curve">volume: %1$s</string>
     <string name="t_recommend">Use recommended setup</string>
-    <string name="s_recommend">Perceptual volume + home guard + OTA block, in one tap</string>
+    <string name="s_recommend">Fine volume + home guard + OTA block, in one tap</string>
     <string name="rec_title">Apply recommended setup?</string>
     <string name="rec_will">Will change:</string>
     <string name="rec_keeps">Already as recommended (unchanged):</string>
-    <string name="rec_vol">· Perceptual volume → on (100 steps)</string>
-    <string name="rec_vol_already">· Perceptual volume: on</string>
+    <string name="rec_vol">· Fine volume → on (±1 step per key)</string>
+    <string name="rec_vol_already">· Fine volume: on</string>
     <string name="rec_guard">· Home guard → on</string>
     <string name="rec_guard_already">· Home guard: on</string>
     <string name="rec_boot">· Launch my launcher at boot → on</string>
@@ -41,13 +43,13 @@
     <string name="grant_fail">✗ Grant failed</string>
     <string name="repair_ok">✓ Guard repaired.</string>
     <string name="repair_wait">Repair still in progress — check the status line.</string>
-    <string name="reset_confirm">Everything goes back to Pilot defaults: perceptual volume on, home guard on, boot launcher fix on, logd off, OTA block on. Continue?</string>
+    <string name="reset_confirm">Everything goes back to Pilot defaults: fine volume on, home guard on, boot launcher fix on, logd off, OTA block on. Continue?</string>
     <string name="reset_done">✓ All settings reset.</string>
 
     <string name="screen_guard">Home guard</string>
     <string name="screen_guard_s">Desktop defense · permissions · launcher</string>
     <string name="screen_audio">Sound</string>
-    <string name="screen_audio_s">Perceptual volume · one switch</string>
+    <string name="screen_audio_s">Fine volume · one switch</string>
     <string name="screen_maintenance">Remote &amp; maintenance</string>
     <string name="screen_maintenance_s">ADB · logd · update block</string>
     <string name="screen_about">About</string>
@@ -62,11 +64,10 @@
     <string name="t_ota">Block system updates</string>
     <string name="s_ota">Keeps the system update engine stopped; off restores system updates</string>
 
-    <string name="t_perc_vol">Perceptual volume</string>
-    <string name="s_perc_on">100 even steps (≈0.8 dB each) down to −80 dB; volume keys show the Pilot overlay</string>
-    <string name="s_perc_off">Factory behavior: ±5 steps and the stock volume bar</string>
-    <string name="s_perc_curve_on">Curve: −80 → 0 dB over 100 steps, each ≈ the just-noticeable difference. Levels 1–34 run below the stock floor of −59 dB through the AudioFlinger master-volume stage; level 1 is about 4× quieter than the stock minimum.</string>
-    <string name="s_perc_curve_off">Off restores factory volume (the stock bar needs one reboot to come back). The curve follows human loudness perception: perceived loudness doubles per +10 dB, so an even-dB ladder is the even-sounding one.</string>
+    <string name="t_perc_vol">Fine volume</string>
+    <string name="s_perc_on">Volume keys step by 1 (0–100) with the stock volume bar, long-press auto-repeats</string>
+    <string name="s_perc_off">Factory behavior: factory stepping and the stock volume bar</string>
+    <string name="s_perc_detail">The level is the system\'s own 0–100 range, evenly split — one key press, one step. No curves, no extra stages. Turning it off restores factory behavior instantly.</string>
 
     <string name="t_homeguard">Home guard</string>
     <string name="s_homeguard">Switches back when the stock launcher takes the screen</string>
@@ -90,7 +91,6 @@
 
     <string name="about_legal">For learning purposes only. Please remove within 24 hours.</string>
 
-    <string name="vol_line">Volume %1$d/%2$d</string>
     <string name="notif_title" translatable="false">DBOS Pilot</string>
     <string name="notif_text">Console :%1$d · Discover :%2$d</string>
 

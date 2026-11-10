@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DBOS 領航</string>
-    <string name="homeguard_desc">原廠桌面回到前景時自動切回你選擇的桌面；並繪製精確音量浮層。</string>
+    <string name="homeguard_desc">原廠桌面回到前景時自動切回你選擇的桌面。</string>
 
     <!-- splash -->
     <string name="splash_tag">讓電視更乾淨的小工具</string>
@@ -16,14 +16,16 @@
     <string name="st_guard">桌面守護</string>
     <string name="st_shell">Shell</string>
     <string name="st_ota">更新已遮蔽</string>
-    <string name="st_curve">曲線：%1$s</string>
+    <string name="vol_mode_perc">±1 檔</string>
+    <string name="vol_mode_stock">原廠</string>
+    <string name="st_curve">音量：%1$s</string>
     <string name="t_recommend">使用推薦設定</string>
-    <string name="s_recommend">感知音量 + 桌面守護 + 遮蔽更新，一鍵完成</string>
+    <string name="s_recommend">精細音量 + 桌面守護 + 遮蔽更新，一鍵完成</string>
     <string name="rec_title">套用推薦設定？</string>
     <string name="rec_will">將會變更：</string>
     <string name="rec_keeps">已是推薦狀態（保持不變）：</string>
-    <string name="rec_vol">· 感知音量 → 開（100 階）</string>
-    <string name="rec_vol_already">· 感知音量：開</string>
+    <string name="rec_vol">· 精細音量 → 開（每次 ±1 檔）</string>
+    <string name="rec_vol_already">· 精細音量：開</string>
     <string name="rec_guard">· 桌面守護 → 開</string>
     <string name="rec_guard_already">· 桌面守護：開</string>
     <string name="rec_boot">· 開機進我的桌面 → 開</string>
@@ -41,13 +43,13 @@
     <string name="grant_fail">✗ 授權失敗</string>
     <string name="repair_ok">✓ 守護已修復。</string>
     <string name="repair_wait">修復進行中——請看狀態行。</string>
-    <string name="reset_confirm">所有設定恢復 Pilot 預設：感知音量開、桌面守護開、開機糾偏開、logd 關、OTA 屏蔽開。繼續？</string>
+    <string name="reset_confirm">所有設定恢復 Pilot 預設：精細音量開、桌面守護開、開機糾偏開、logd 關、OTA 屏蔽開。繼續？</string>
     <string name="reset_done">✓ 已重設全部設定。</string>
 
     <string name="screen_guard">桌面守護</string>
     <string name="screen_guard_s">桌面防守 · 權限 · 桌面選擇</string>
     <string name="screen_audio">聲音</string>
-    <string name="screen_audio_s">感知音量 · 單一開關</string>
+    <string name="screen_audio_s">精細音量 · 單一開關</string>
     <string name="screen_maintenance">遠端與維護</string>
     <string name="screen_maintenance_s">ADB · logd · 更新遮蔽</string>
     <string name="screen_about">關於</string>
@@ -62,11 +64,10 @@
     <string name="t_ota">遮蔽系統更新</string>
     <string name="s_ota">保持升級守護停止；關閉即恢復系統更新</string>
 
-    <string name="t_perc_vol">感知音量</string>
-    <string name="s_perc_on">100 階均勻步進（每階約 0.8 dB），底端 −80 dB；音量鍵走 Pilot 浮層</string>
-    <string name="s_perc_off">原廠行為：±5 步進與原廠音量條</string>
-    <string name="s_perc_curve_on">曲線：−80 → 0 dB 均分 100 階，每階約等於一個可辨差（JND）。1-34 階低於原廠 −59 dB 的地板，由 AudioFlinger 主音量補足；1 階比原廠最低音量安靜約 4 倍。</string>
-    <string name="s_perc_curve_off">關閉即恢復原廠音量（原廠音量條需重啟一次回來）。曲線依據人耳響度感知：每 +10 dB 感知響度翻倍，均勻的 dB 階梯才是聽起來均勻的階梯。</string>
+    <string name="t_perc_vol">精細音量</string>
+    <string name="s_perc_on">每次按鍵 ±1 檔（0–100），長按連調，顯示原廠音量條</string>
+    <string name="s_perc_off">原廠行為：原廠步進與原廠音量條</string>
+    <string name="s_perc_detail">音量就是系統的 0–100 檔均分，一次按鍵一步。沒有曲線，沒有附加通道。關閉立即恢復原廠行為。</string>
 
     <string name="t_homeguard">桌面守護</string>
     <string name="s_homeguard">原廠桌面佔據畫面時自動切回</string>
@@ -90,7 +91,6 @@
 
     <string name="about_legal">僅供學習目的。請在 24 小時內自行刪除。</string>
 
-    <string name="vol_line">音量 %1$d/%2$d</string>
     <string name="notif_text">主控台 :%1$d · 探索 :%2$d</string>
 
 </resources>

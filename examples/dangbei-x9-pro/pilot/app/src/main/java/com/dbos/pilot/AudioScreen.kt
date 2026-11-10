@@ -18,18 +18,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Sound screen: one switch. Perceptual volume on = the Pilot overlay + a
- * 100-level, even-dB curve (0.8 dB/step, floor at −80 dB via the AudioFlinger
- * master-volume stage); off = factory behavior. Turning it on needs the
- * shell channel (native ±1 steps, stock-bar cut, master writes), so the row
- * greys out with the dependency while adbd is down.
+ * Sound screen: one switch.
+ *
+ * On  = volume keys step by 1 through the system's own 0–100 range and
+ *       Pilot shows the level; long-press auto-repeats.
+ * Off = factory behavior: the keys go straight to the system.
  */
 @Composable
 fun AudioScreen() {
     val ctx = LocalContext.current
-    val st = rememberStatus()
-    val shellLive = st.shell
-    val depAdbd = stringResource(R.string.dep_adbd)
 
     var rev by remember { mutableIntStateOf(0) }
     fun refresh() { rev++ }
@@ -37,9 +34,7 @@ fun AudioScreen() {
     val grabber = rememberFocusGrabber()
     val cs = androidx.tv.material3.MaterialTheme.colorScheme
     // remember(rev) reads rev, so refresh() (rev++) really recomposes.
-    val curveOn = remember(rev) {
-        BetterAudio.isOn(Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL))
-    }
+    val on = remember(rev) { Config.get(ctx, Config.Key.PERCEPTUAL) }
 
     Page(
         title = stringResource(R.string.screen_audio),
@@ -49,18 +44,12 @@ fun AudioScreen() {
         item {
             RowCard(
                 modifier = Modifier.focusGrabber(grabber),
-                title = marked(ctx, R.string.t_perc_vol,
-                    Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL) != BetterAudio.PERCEPTUAL),
-                summary = when {
-                    !shellLive -> depAdbd
-                    curveOn -> stringResource(R.string.s_perc_on)
-                    else -> stringResource(R.string.s_perc_off)
-                },
-                state = curveOn,
-                enabled = shellLive,
+                title = marked(ctx, R.string.t_perc_vol, !on),
+                summary = if (on) stringResource(R.string.s_perc_on)
+                          else stringResource(R.string.s_perc_off),
+                state = on,
                 onClick = {
-                    Config.applyPreset(ctx, if (curveOn) BetterAudio.STOCK else BetterAudio.PERCEPTUAL)
-                    ctx.sendService(PilotService.ACT_APPLY_VOLUME)
+                    VolumeEngine.setEnabled(!on)
                     refresh()
                 },
             )
@@ -69,7 +58,7 @@ fun AudioScreen() {
         item {
             Spacer(Modifier.height(6.dp))
             BasicText(
-                if (curveOn) stringResource(R.string.s_perc_curve_on) else stringResource(R.string.s_perc_curve_off),
+                stringResource(R.string.s_perc_detail),
                 style = TextStyle(color = cs.onSurfaceVariant, fontSize = 14.sp, lineHeight = 20.sp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
             )

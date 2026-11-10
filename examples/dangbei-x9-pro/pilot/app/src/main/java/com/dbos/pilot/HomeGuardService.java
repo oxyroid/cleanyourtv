@@ -13,9 +13,9 @@ import android.view.accessibility.AccessibilityWindowInfo;
 import java.util.List;
 
 /**
- * Home guard (accessibility service) + exact-volume overlay.
+ * Home guard (accessibility service).
  *
- * Home guard: this ROM's launcher (and some of its sibling processes) keeps
+ * This ROM's launcher (and some of its sibling processes) keeps
  * grabbing the foreground after boot and after its own pages close; one-shot
  * home takeovers get stolen back. The reliable answer is a system-level window
  * subscription: whenever the stock launcher's main HOME activity comes to the
@@ -26,12 +26,9 @@ import java.util.List;
  * Only the stock launcher's *main* HOME activity is corrected; its secondary
  * pages (the built-in market etc.) are pages the user opened and pass freely.
  *
- * Volume: the curve logic itself lives in VolCurve (a plain
- * VOLUME_CHANGED_ACTION receiver — no accessibility involved). This service
- * only draws the exact-value overlay: the accessibility window type is the
- * one overlay surface this ROM hands to third parties (SYSTEM_ALERT_WINDOW
- * is never granted), and unlike toasts it does not throttle on rapid
- * presses. When the guard is not connected, VolCurve falls back to a toast.
+ * Volume keys are deliberately not touched: the system's input policy
+ * consumes them before any accessibility filter runs (see the onKeyEvent
+ * note below and VolumeEngine for the fine-step switch).
  */
 public class HomeGuardService extends AccessibilityService {
 
@@ -60,14 +57,6 @@ public class HomeGuardService extends AccessibilityService {
         instance = this;
         status = "connected";
         Log.i(TAG, "HomeGuard connected");
-        // The XML declares canRequestFilterKeyEvents; the flag itself must
-        // be armed at runtime or no key copies ever reach onKeyEvent.
-        try {
-            android.accessibilityservice.AccessibilityServiceInfo info = getServiceInfo();
-            info.flags |= android.accessibilityservice.AccessibilityServiceInfo
-                    .FLAG_REQUEST_FILTER_KEY_EVENTS;
-            setServiceInfo(info);
-        } catch (Throwable ignored) {}
         h.postDelayed(periodic, 3000);
     }
 
@@ -92,109 +81,17 @@ public class HomeGuardService extends AccessibilityService {
     public void onInterrupt() { status = "interrupted"; }
 
     /**
-     * Volume-key copies: display-only. On this ROM VOLUME_CHANGED broadcasts
-     * reach apps ~0.4s after the volume lands, which made the overlay feel
-     * sluggish. The key *copy* arrives instantly, so the overlay paints the
-     * predicted level right away; the broadcast correction follows and
-     * repaints the final value. The copy is never trusted for correction —
-     * return false always, VolCurve stays the single writer.
+     * Volume keys are NOT intercepted. The system's input policy
+     * (WindowManagerService) consumes them before any accessibility filter
+     * could, stepping AudioService directly; the fine-step switch is the ROM
+     * prop persist.vendor.brand.simple (see VolumeEngine). This service only
+     * watches windows — including the stock volume bar the system itself
+     * shows.
      */
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
-        try {
-            if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return false;
-            int dir;
-            if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_VOLUME_UP) dir = 1;
-            else if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) dir = -1;
-            else return false;
-            if (!Config.get(this, Config.Key.FINEVOL)) return false;
-            if (!BetterAudio.isOn(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)))
-                return false;
-            if (VolCurve.shownValue() < 0) return false;   // nothing landed yet: let the broadcast lead
-            int[] pl = VolCurve.predict(dir);
-            showVolume(this, pl[0], pl[1],
-                    BetterAudio.get(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)));
-            // The key copy also kicks the 100 ms consume-poll: corrections
-            // settle in ~0.1 s instead of at broadcast pace (~0.5 s here).
-            VolCurve.kick(this, dir);
-        } catch (Throwable ignored) {}
-        return false;                               // never intercept
+        return false;
     }
-
-    // ---------------- exact-volume overlay ----------------
-
-    private android.widget.TextView volView;
-    private boolean volViewAdded = false;
-
-    private int dp(int d) {
-        return Math.round(d * getResources().getDisplayMetrics().density);
-    }
-
-    /**
-     * Display one volume value: the accessibility overlay when the guard is
-     * connected, a plain toast otherwise (called by VolCurve; also used by
-     * this service for boot-time display). Safe from any thread.
-     */
-    static void showVolume(Context ctx, int level, int internal, BetterAudio.Preset p) {
-        HomeGuardService svc = instance;
-        if (svc != null && connected) {
-            svc.showVolInner(level, p);
-        } else {
-            try {
-                String txt = ctx.getString(R.string.vol_line, level, p.steps);
-                android.widget.Toast.makeText(ctx, txt, android.widget.Toast.LENGTH_SHORT).show();
-            } catch (Throwable ignored) {}
-        }
-    }
-
-    private void showVolInner(int level, BetterAudio.Preset p) {
-        try {
-            if (volView == null) {
-                volView = new android.widget.TextView(this);
-                volView.setTextColor(0xFFFFFFFF);
-                volView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
-                android.graphics.drawable.GradientDrawable bg =
-                        new android.graphics.drawable.GradientDrawable();
-                bg.setColor(0xE6202020);
-                bg.setCornerRadius(dp(10));
-                volView.setBackground(bg);
-                volView.setPadding(dp(18), dp(10), dp(18), dp(10));
-            }
-            // One number only: the perceptual level. The internal index and
-            // master stage are rendering details, never user-facing.
-            volView.setText(getString(R.string.vol_line, level, p.steps));
-            if (!volViewAdded) {
-                android.view.WindowManager.LayoutParams lp =
-                        new android.view.WindowManager.LayoutParams(
-                                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
-                                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
-                                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                                        | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                                android.graphics.PixelFormat.TRANSLUCENT);
-                lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
-                lp.y = dp(40);
-                ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
-                        .addView(volView, lp);
-                volViewAdded = true;
-            }
-            // Rapid presses only reset the hide timer; the window is reused.
-            h.removeCallbacks(volHide);
-            h.postDelayed(volHide, 1500);
-        } catch (Throwable ignored) {}
-    }
-
-    private final Runnable volHide = new Runnable() {
-        @Override public void run() {
-            try {
-                if (volViewAdded) {
-                    ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
-                            .removeView(volView);
-                    volViewAdded = false;
-                }
-            } catch (Throwable ignored) {}
-        }
-    };
 
     @Override
     public boolean onUnbind(Intent intent) {
@@ -208,7 +105,6 @@ public class HomeGuardService extends AccessibilityService {
         connected = false;
         instance = null;
         status = "destroyed";
-        try { volHide.run(); } catch (Throwable ignored) {}
         h.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
