@@ -47,7 +47,7 @@ public class ScoutService extends Service {
     public static final int UDP_PORT = 9999;
     public static final int ANN_PORT = 9998;   // 主动广播端口（Mac 侧监听这里）
     public static final String TOKEN = "S9x7Kp2mQw4";
-    public static final String VER = "17.0";
+    public static final String VER = "18.0";
     public static final int NOTIF_ID = 1001;
 
     public static volatile String lastStatus = "init";
@@ -177,7 +177,7 @@ public class ScoutService extends Service {
         try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
     }
 
-    // ---------------- v17: 原生音量三件套 ----------------
+    // ---------------- v17/v18: 原生音量 + better-audio ----------------
     //
     // 1) 单格步进：persist.vendor.brand.simple=1（出厂 10 → ×5 步进）。
     //    从 AudioService.adjustSuggestedStreamVolume 反汇编确认的 ROM 分支，
@@ -186,8 +186,13 @@ public class ScoutService extends Service {
     //    （事务号 92 从本机 framework.dex 的 IAudioService$Stub 静态字段实测提取，
     //    shell 持有 STATUS_BAR_SERVICE）。开机后 SystemUI 会重新注册，
     //    所以要周期复核把它再掐掉。
-    // 3) 两步都需要 shell 身份：Scout（uid 10xxx）没有权限，但 adbd 是我们自己
-    //    拉起的（ro.adb.secure=0），LocalAdb 从 127.0.0.1:5555 以 shell 跑命令。
+    // 3) better-audio（v18）：音量预制曲线见 BetterAudio.java。切换预制会派生
+    //    FINEVOL/VOLOSD/NIGHTGAIN 三个底层开关（Config.applyPreset），
+    //    切换时阶的重映射由 HomeGuardService.levelFor 完成、内部值不动——
+    //    实际音量零变化。
+    // 4) logd 自愈（v18）：系统 logd 出厂被 ROM 关闭（没它 logcat 全黑）。
+    //    LOGD 开关打开后，每轮复核顺手 setprop ctl.start logd。
+    // 以上 shell 身份操作都经 LocalAdb（连自己拉起的 adbd 127.0.0.1:5555）。
 
     public static volatile String volNativeState = "init";
 
@@ -211,23 +216,31 @@ public class ScoutService extends Service {
                 volNativeState = "brand.simple->10 " + (r.isEmpty() ? "ok" : r);
             }
 
-            // 2) 掐原厂音量条：SystemUI 注册着 binder 才需要动
+            // 2) 掐原厂音量条：SystemUI 注册着 binder 才需要动。
+            //    v18 取证修正：dumpsys 必须走 LocalAdb（app uid 被 SELinux 拦成空输出，
+            //    v17 靠幂等 service call 侥幸没出事）；SystemUI 被 force-stop 后重启
+            //    实测【不会】重新注册 VolumeController —— 所以"关开关自动恢复"
+            //    不可行（还会陷入周期重启 SystemUI 的循环）。恢复原厂条的唯一
+            //    可靠途径 = 重启设备（开机时 SystemUI 正常注册）。
             if (osd) {
-                String ctrl = sh("dumpsys audio | grep mVolumeController").trim();
+                String ctrl = LocalAdb.shell("dumpsys audio | grep mVolumeController");
                 if (!ctrl.contains("(null")) {
                     String r = LocalAdb.shell("service call audio 92");
                     volNativeState += " | volosd " + (r.contains("00000000") ? "cut" : r);
                 }
             } else if (attempt == 0) {
-                // 开关刚关：把控制器还给 SystemUI（persistent 进程，force-stop 自愈重注册）
-                String ctrl = sh("dumpsys audio | grep mVolumeController").trim();
-                if (ctrl.contains("(null")) {
-                    LocalAdb.shell("am force-stop com.xgimi.systemui");
-                    volNativeState = "volosd restore (systemui restarted)";
+                volNativeState += " | volosd off（恢复原厂音量条需重启设备）";
+            }
+
+            // 3) v18: logd 自愈（原厂关闭，开了开关就每轮确保 running）
+            if (Config.get(this, Config.Key.LOGD)) {
+                String logd = sh("getprop init.svc.logd").trim();
+                if (!"running".equals(logd)) {
+                    LocalAdb.shell("setprop ctl.start logd");
                 }
             }
 
-            // 3) 夜间增益随复核刷新（DP 丢失/服务重启后自动重挂）
+            // 4) 夜间增益随复核刷新（DP 丢失/服务重启后自动重挂）
             applyNightGain(this);
         } catch (Throwable t) {
             volNativeState = "volNative err: " + t;
@@ -522,14 +535,34 @@ public class ScoutService extends Service {
                 Config.set(this, Config.Key.VOLOSD, !"0".equals(p.get(Config.Key.VOLOSD)));
             if (p.containsKey(Config.Key.NIGHTGAIN))
                 Config.set(this, Config.Key.NIGHTGAIN, !"0".equals(p.get(Config.Key.NIGHTGAIN)));
-            // v17: 音量三开关改动立即生效（不等下一轮复核）
-            if (p.containsKey(Config.Key.FINEVOL) || p.containsKey(Config.Key.VOLOSD)) {
+            if (p.containsKey(Config.Key.LOGD))
+                Config.set(this, Config.Key.LOGD, !"0".equals(p.get(Config.Key.LOGD)));
+            // v18: better-audio 预制切换（派生三个底层开关，立即生效）
+            boolean curveChanged = false;
+            if (p.containsKey("volcurve")) {
+                String v = p.get("volcurve");
+                if (BetterAudio.isValid(v)) {
+                    Config.applyPreset(this, v);
+                    curveChanged = true;
+                }
+            }
+            // v17/v18: 音量链改动立即生效（不等下一轮复核）
+            if (curveChanged || p.containsKey(Config.Key.FINEVOL) || p.containsKey(Config.Key.VOLOSD)) {
                 pool.execute(new Runnable() {
                     @Override public void run() { volNativeLoop(6); }
                 });
             }
             if (p.containsKey(Config.Key.NIGHTGAIN))
                 applyNightGain(this);
+            return Config.toJson(this);
+        }
+        if ("/reset".equals(path)) {
+            // v18: 一键恢复 Scout 默认配置（全部开关/预制回默认），立即生效
+            Config.reset(this);
+            pool.execute(new Runnable() {
+                @Override public void run() { volNativeLoop(6); }
+            });
+            applyNightGain(this);
             return Config.toJson(this);
         }
         if ("/vol".equals(path)) {
@@ -655,6 +688,10 @@ public class ScoutService extends Service {
         r.append(",\"guardTarget\":").append(js(HomeGuardService.target));
         r.append(",\"volNative\":").append(js(volNativeState));
         r.append(",\"brandSimple\":").append(js(sh("getprop persist.vendor.brand.simple").trim()));
+        r.append(",\"volCurve\":").append(js(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100)));
+        r.append(",\"curveSteps\":").append(BetterAudio.get(
+                Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100)).steps);
+        r.append(",\"logd\":").append(js(sh("getprop init.svc.logd").trim()));
         r.append(",\"wakelock\":").append(wakeLock != null && wakeLock.isHeld());
         r.append(",\"uptime\":").append(js(sh("cat /proc/uptime").trim()));
         r.append('}');

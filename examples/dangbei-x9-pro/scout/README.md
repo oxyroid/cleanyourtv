@@ -6,7 +6,7 @@ boot — the ROM ships adbd fully configured (`ro.adb.secure=0`, `persist.adb.tc
 starts it, and no stock screen lets you start it either. Until you have a shell, no list on
 [examples/](../../README.md) can be applied at all.
 
-Scout is that way in: a ~37 KB sideloaded APK, plain Java, no dependencies, no AndroidX, that runs
+Scout is that way in: a ~42 KB sideloaded APK, plain Java, no dependencies, no AndroidX, that runs
 on the TV and opens the door from the inside. Copy [dist/DBOSScout.apk](dist/DBOSScout.apk) to a USB stick, install it
 with the stock file manager, open it once — and ADB is up for the session. Everything else is
 optional.
@@ -70,13 +70,20 @@ need the token as `?k=<token>` (the token is printed in the app and in `/whoami`
 
 | Route | What it does |
 |---|---|
-| `/whoami` | Status: IPs, adbd state, guard status, versions |
+| `/whoami` | Status: IPs, adbd state, guard status, volume chain, preset, logd |
 | `/ui` | The WebUI page |
 | `/sh?c=<command>&k=…` | Run a shell command, return output |
 | `/adbstart` | `setprop ctl.start adbd` on demand |
-| `/config` | Read/write the feature switches (POST) |
+| `/config` | Read/write the feature switches; `?volcurve=<preset>` switches better-audio |
+| `/reset` | Restore Scout's default configuration (all switches and the preset) |
 | `/pkg` | Installed packages |
-| `/vol` | Volume anchor for the fine-steps feature |
+| `/vol` | Volume read/set (internal 0–100 values) |
+
+The app panel itself is remote-first (leanback): D-pad up/down selects, OK toggles/executes,
+left/right cycles the better-audio preset, every row carries a stable slug (`home-guard`,
+`better-audio`, `reset-scout`, …) plus the description, and `restore-stock`/`reset-scout` rows
+give the factory-volume and default-configuration escape hatches. The manifest declares
+`LEANBACK_LAUNCHER`, so TV launchers list it as a TV app.
 
 ## The optional guards (each can be switched off)
 
@@ -105,9 +112,30 @@ Defaults are on, because the guards are why a headless set stays manageable:
   XGIMI SystemUI as the system `IVolumeController`. Scout un-registers it —
   `service call audio 92` is `IAudioService.setVolumeController(null)`, the transaction code read
   from this very firmware's `IAudioService$Stub` — over the local ADB channel, where the shell
-  holds `STATUS_BAR_SERVICE`. SystemUI re-registers on every boot, so Scout re-checks the
-  controller every 5 minutes and cuts it again. Turning the switch off force-stops the
-  persistent SystemUI process, which makes it re-register and restores the stock bar.
+  holds `STATUS_BAR_SERVICE`. SystemUI re-registers on every *boot*, so Scout re-checks the
+  controller every 5 minutes and cuts it again. **Getting the stock bar back is the one thing a
+  switch cannot do**: the XGIMI SystemUI, once force-stopped, restarts but does *not* re-register
+  its controller (tested), so the reliable path back to the stock OSD is a device reboot. The
+  checks read the controller via the local ADB channel — the app's own uid gets an empty
+  `dumpsys audio` under this ROM's SELinux policy.
+- **better-audio presets** (`volcurve`, v18): on top of the native ±1 steps, a level↔internal-value
+  mapping so the remote's steps can be perceptually even. Switching presets re-maps the level
+  only (`levelFor` on the unchanged internal value) — the loudness you hear does not jump.
+  Presets: `stock` (factory: ±5, stock OSD, nothing else), `fine100` (100 steps 1:1 — the default,
+  zero correction), `step30` (30 linear steps, ±3–4 internal per press), `perceptual` (40 steps on
+  a quadratic curve pinned at f(1)=1 and f(40)=100: exactly one internal value per step at the
+  quiet end — the finest granularity the 0–100 internal scale allows — growing to ~6 at the top).
+  All presets keep ≥20 steps (the stock bar itself shows 20), and the curve math requires strict
+  monotonicity so no two levels map to the same internal value. Remote: ←/→ in the app's
+  better-audio row; WebUI: the preset buttons. `/reset` restores Scout's defaults,
+  `volcurve=stock` restores the factory behavior (OSD registration back after one reboot).
+- **Long-press volume fix** (v18): on a held volume key the repeat-key events do not reliably
+  reach the accessibility layer, so the overlay used to freeze at the first value. During any
+  keypress window the service now polls the internal volume every 120 ms, re-snaps to the curve
+  and refreshes the overlay; the poll self-stops 900 ms after the last key event.
+- **logd** (`logd_on`, v18, default off): this ROM ships logd stopped — `logcat` is black. With
+  the switch on, Scout's 5-minute check also runs `setprop ctl.start logd` over the local ADB
+  channel whenever logd is not running. Off means factory behavior: no logd, no logs.
 - **Night-gain** (`nightgain_on`): even 1/100 can be too loud at night, and below 1 there is only
   mute. Scout attaches a `DynamicsProcessing` effect to the global output mix (session 0) and
   attenuates by 18/12/6 dB while the volume sits at 1/2/3, giving the bottom three steps a

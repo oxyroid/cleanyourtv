@@ -72,7 +72,13 @@ keystone overlay UI, so it is doubly untouchable.
   The stock volume OSD (`VolumeDialog`, registered by the XGIMI SystemUI) has no settings toggle;
   it can only be silenced by unregistering it (`IAudioService.setVolumeController(null)`,
   transaction 92 in this firmware), which needs the shell-held `STATUS_BAR_SERVICE`. Scout's
-  local-ADB channel does both; see [scout/README.md](scout/README.md).
+  local-ADB channel does both, and layers **better-audio presets** on top (v18): 100-step 1:1,
+  30-step linear, or a 40-step perceptual curve whose quiet end steps exactly one internal value
+  per press, all switchable without a loudness jump, plus DynamicsProcessing night attenuation
+  (−18/12/6 dB at volume 1/2/3) and an optional logd bring-up (this ROM ships logd stopped).
+  The one-way street to know about: un-registering the stock OSD is reversible only by a
+  *device reboot* — the XGIMI SystemUI does not re-register its volume controller when the
+  process restarts. See [scout/README.md](scout/README.md).
 
 ## App store
 
@@ -87,7 +93,7 @@ direct download link `app.znds.com/update/dbmarket.apk` still answers.
 Both live under this folder, each with its own README, and neither is part of the debloat list:
 they are the way in and the home screen, not something the list removes.
 
-- [scout/](scout/README.md) — **DBOS Scout**, the rescue channel. A ~37 KB sideloaded APK whose only
+- [scout/](scout/README.md) — **DBOS Scout**, the rescue channel. A ~42 KB sideloaded APK whose only
   irreplaceable job is running `setprop ctl.start adbd` from inside the TV, plus a persisted-job
   self-start chain, a UDP presence broadcast, an HTTP console, a home guard and a volume fine-steps
   counter. Without it, ADB is a one-shot: `pm disable-user` a package and reboot, and you have no way

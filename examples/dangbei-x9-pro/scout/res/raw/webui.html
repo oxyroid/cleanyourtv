@@ -52,8 +52,10 @@
     <div class="kv"><b>adbd</b><span id="m-adbd">-</span></div>
     <div class="kv"><b>桌面守护</b><span id="m-guard">-</span></div>
     <div class="kv"><b>守护目标</b><span id="m-target">-</span></div>
+    <div class="kv"><b>音量链</b><span id="m-vol" style="font-size:11px">-</span></div>
+    <div class="kv"><b>音量曲线</b><span id="m-curve">-</span></div>
+    <div class="kv"><b>logd</b><span id="m-logd">-</span></div>
     <div class="kv"><b>服务状态</b><span id="m-status" style="font-size:12px">-</span></div>
-    <div class="kv"><b>音量链</b><span id="m-vol" style="font-size:12px">-</span></div>
   </div>
 
   <div class="card">
@@ -66,12 +68,34 @@
       <span class="sw"><input type="checkbox" data-k="adbd_on" id="sw3"><i></i></span></label>
     <label class="toggle"><div>IP 广播<div class="desc">开机后向局域网广播位置，根治 IP 漂移</div></div>
       <span class="sw"><input type="checkbox" data-k="announce_on" id="sw4"><i></i></span></label>
-    <label class="toggle"><div>音量单格<div class="desc">音量键原生 1 格/按（ROM 自带开关 brand.simple）+ 精确值浮层</div></div>
+    <label class="toggle"><div>调试日志 logd<div class="desc">系统 logd 出厂被关闭；开启后 Scout 自动拉起，logcat 可用</div></div>
+      <span class="sw"><input type="checkbox" data-k="logd_on" id="sw5b"><i></i></span></label>
+  </div>
+
+  <div class="card">
+    <h2>better-audio（音量预制曲线）</h2>
+    <div class="btns" id="curves">
+      <button data-c="stock">stock 原厂</button>
+      <button data-c="fine100">fine100 百阶精调</button>
+      <button data-c="step30">step30 三十阶</button>
+      <button data-c="perceptual">perceptual 感知</button>
+    </div>
+    <div class="desc" id="curve-info" style="color:var(--dim);font-size:12px;margin-top:8px"></div>
+    <div style="color:var(--dim);font-size:12px;margin-top:4px">
+      stock=±5步进+原厂音量条 · fine100=100阶1:1（夜间推荐配合增益） ·
+      step30=每按±3~4 · perceptual=40阶感知曲线（低段每阶恰1内部值）
+    </div>
+    <div class="kv" style="margin-top:8px"><b>高级微调（一般不动）</b><span></span></div>
+    <label class="toggle"><div>曲线校正总开关<div class="desc">关=纯原生单格旁听，浮层也不弹</div></div>
       <span class="sw"><input type="checkbox" data-k="finevol_on" id="sw5"><i></i></span></label>
-    <label class="toggle"><div>隐藏原厂音量条<div class="desc">按音量键不再弹原厂条（其刻度只到 1/5，且重绘抖动）</div></div>
+    <label class="toggle"><div>覆盖系统音量条<div class="desc">掐原厂 OSD，由 Scout 浮层接管显示</div></div>
       <span class="sw"><input type="checkbox" data-k="volosd_on" id="sw6"><i></i></span></label>
-    <label class="toggle"><div>夜间微音量<div class="desc">音量 1-3 档时输出再衰减 18/12/6dB（解决 1 档仍偏响）</div></div>
+    <label class="toggle"><div>夜间 DP 增益<div class="desc">音量 1-3 档输出混音 -18/-12/-6dB（1 还是太响的解法）</div></div>
       <span class="sw"><input type="checkbox" data-k="nightgain_on" id="sw7"><i></i></span></label>
+    <div class="btns" style="margin-top:8px">
+      <button onclick="api('/config?volcurve=stock','已切回原厂音量（如需原厂音量条，请重启设备一次）')">恢复原厂音量</button>
+      <button onclick="api('/reset','Scout 配置已重置为默认')">重置 Scout 配置</button>
+    </div>
   </div>
 
   <div class="card">
@@ -155,11 +179,24 @@ async function refresh() {
     g.textContent = d.guard ? '在线' : '离线';
     g.className = d.guard ? 'st-ok' : 'st-bad';
     document.getElementById('m-target').textContent = d.guardTarget || '-';
+    document.getElementById('m-vol').textContent = d.volNative || '-';
+    document.getElementById('m-curve').textContent = (d.volCurve || '-') + ' (' + (d.curveSteps || '?') + '阶)';
+    const lg = document.getElementById('m-logd');
+    lg.textContent = d.logd || '-';
+    lg.className = d.logd === 'running' ? 'st-ok' : 'st-dim';
+    const cur = d.volCurve || 'fine100';
+    document.querySelectorAll('#curves button').forEach(b => {
+      b.style.borderColor = b.dataset.c === cur ? 'var(--acc)' : 'var(--line)';
+      b.style.color = b.dataset.c === cur ? 'var(--acc)' : 'var(--txt)';
+    });
+    document.getElementById('curve-info').textContent = '当前预制: ' + cur +
+      (cur === 'stock' ? ' —— 原厂 ±5 步进、原厂音量条' :
+       cur === 'fine100' ? ' —— 100 阶 1:1，原生单格，浮层显示精确值' :
+       cur === 'step30' ? ' —— 30 阶线性，每按 ±3~4 内部值' :
+       ' —— 40 阶感知曲线，低段每阶恰 1 内部值（夜间最细）') +
+      ' · 切换只重映射阶，实际音量不变';
     const st = document.getElementById('m-status');
     st.textContent = (d.guardStatus ? d.guardStatus + ' | ' : '') + d.status;
-    const vv = document.getElementById('m-vol');
-    vv.textContent = 'brand.simple=' + (d.brandSimple || '?') + ' · ' + (d.volNative || '-');
-    vv.className = (d.brandSimple === '1') ? 'st-ok' : 'st-warn';
   } catch (e) {
     document.getElementById('dot').className = 'dot';
   }
@@ -178,6 +215,14 @@ document.querySelectorAll('.sw input').forEach(el => {
     const k = el.dataset.k, v = el.checked;
     await fetch(q('/config?' + k + '=' + (v ? 1 : 0)));
     toast(k + ' → ' + (v ? '开' : '关'));
+    setTimeout(refresh, 500);
+  });
+});
+
+document.querySelectorAll('#curves button').forEach(el => {
+  el.addEventListener('click', async () => {
+    await fetch(q('/config?volcurve=' + el.dataset.c));
+    toast('better-audio → ' + el.dataset.c);
     setTimeout(refresh, 500);
   });
 });

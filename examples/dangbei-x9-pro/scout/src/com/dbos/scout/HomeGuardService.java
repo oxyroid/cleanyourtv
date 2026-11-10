@@ -72,7 +72,7 @@ public class HomeGuardService extends AccessibilityService {
     public void onInterrupt() { status = "interrupted"; }
 
     /**
-     * v17: 音量键处理全面重构（对冲校正方案退役）。
+     * v17→v18: 音量键链路演进。
      *
      * v14 的对冲校正源于当时的认知缺口：以为 ROM 的 ±5 拦不掉只能对冲。
      * v17 取证（services.jar 反汇编 + 拉起 logd 抓链）发现完整路径：
@@ -83,25 +83,39 @@ public class HomeGuardService extends AccessibilityService {
      * 原厂预留的单格步进开关（persist 属性，重启保留），ScoutService 经
      * 本机 ADB 通道设置它。音量变化从此全是原生行为。
      *
-     * 无障碍服务在这里只剩一个职责：旁听音量键、弹自绘浮层显示精确值。
+     * v18: 单格步进之上叠加 better-audio 曲线（见 BetterAudio.java）——
+     * 旁听键 → 按"阶"吸附内部值（setStreamVolume 不带 SHOW_UI，瞬时落地）。
+     * 与 v14 对冲的本质区别：底座已是原生 ±1，校正只在曲线预制（step30/
+     * perceptual）下发生且是绝对值吸附，fine100 下零校正纯旁听。
+     *
+     * 无障碍服务在这里的职责：旁听音量键 → 曲线校正 → 弹自绘浮层显示精确值。
      * 旁听发生在 ROM 处理之后（interceptKeyBeforeQueueing 在 a11y 过滤之前
      * 已把音量调好），所以读到的就是新值。
      *
-     * v16: 原厂 OSD 的刻度是内部值÷5，且 ROM 落的 ±5 和我们的回拨各刷一次 OSD，
-     * 观感"鬼畜"。对策：我方所有 setStreamVolume 一律不带 FLAG_SHOW_UI
-     * （ROM 自己那次 OSD 弹出无法阻止，但不再被我方叠加重绘），
-     * 精确值改由自己的浮层提示（如"音量 32/100"）。
+     * v16: 我方所有 setStreamVolume 一律不带 FLAG_SHOW_UI（原厂 OSD 由
+     * volosd 开关经 setVolumeController(null) 整体掐掉，不存在叠加重绘）。
      *
      * v16.1: Toast 被实测否决——每按一键 makeText 一个新 Toast，连按几下后
      * 系统的 toast 队列/节流直接丢弃后续（"前几下弹、后面不弹"）。
      * 改为 TYPE_ACCESSIBILITY_OVERLAY 自绘浮层：无障碍服务专有窗口类型，
      * 无需额外权限、无次数限制，连按时只更新文本 + 重置 1.5s 隐藏计时。
+     *
+     * v18: 长按实测缺陷——长按音量键时后续 repeat DOWN 并非每次都能送达
+     * onKeyEvent（浮层停在第一次按下的值，直到松手再按才刷新）。对策：
+     * 按键期间挂 120ms 轮询（volPoll），读到内部值变化就按推断方向重算
+     * 吸附 + 刷浮层；900ms 无新键事件自动停。同时 better-audio 曲线校正
+     * （snap）也跑在同一条路上：短按由 onKeyEvent 驱动，长按由轮询兜底。
      */
     public static volatile int volAnchor = -1;
 
     /** v16.1: 音量浮层（替代 Toast，绕开系统节流） */
     private android.widget.TextView volView;
     private boolean volViewAdded = false;
+
+    /** v18: 长按轮询状态 */
+    private int volShown = -1;            // 浮层/校正最近一次落的内部值
+    private long lastVolKeyAt = 0;        // 最近一次收到音量键事件的时间
+    private int volPollTicks = 0;         // 轮询防呆计数
 
     private final Runnable volHide = new Runnable() {
         @Override public void run() {
@@ -119,7 +133,7 @@ public class HomeGuardService extends AccessibilityService {
         return Math.round(d * getResources().getDisplayMetrics().density);
     }
 
-    private void showVol(int v, int max) {
+    private void showVol(int level, int internal, BetterAudio.Preset p) {
         try {
             if (volView == null) {
                 volView = new android.widget.TextView(this);
@@ -132,7 +146,10 @@ public class HomeGuardService extends AccessibilityService {
                 volView.setBackground(bg);
                 volView.setPadding(dp(18), dp(10), dp(18), dp(10));
             }
-            volView.setText("音量 " + v + "/" + max);
+            // fine100 下阶==内部值，显示 "音量 32/100"；曲线预制补充内部值
+            String txt = "音量 " + level + "/" + p.steps;
+            if (internal != level) txt += " · " + internal + "/100";
+            volView.setText(txt);
             if (!volViewAdded) {
                 android.view.WindowManager.LayoutParams lp =
                         new android.view.WindowManager.LayoutParams(
@@ -148,11 +165,56 @@ public class HomeGuardService extends AccessibilityService {
                         .addView(volView, lp);
                 volViewAdded = true;
             }
-            // 连按期间只重置隐藏计时，不重复创建窗口
+            // 连按/长按期间只重置隐藏计时，不重复创建窗口
             h.removeCallbacks(volHide);
             h.postDelayed(volHide, 1500);
         } catch (Throwable ignored) {}
     }
+
+    /** v18: 曲线吸附——从"按键前的内部值"出发，沿曲线走一阶并落值。
+     *  fine100 下 internalFor(levelFor(v)) == v，天然退化为零校正纯旁听。 */
+    private void snap(int dir) {
+        try {
+            BetterAudio.Preset p = BetterAudio.get(
+                    Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100));
+            android.media.AudioManager am = (android.media.AudioManager)
+                    getSystemService(AUDIO_SERVICE);
+            int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
+            int pre = Math.max(0, cur - dir);                 // ROM 原生 ±1 已落，先还原
+            int level = BetterAudio.levelFor(pre, p) + dir;   // 沿曲线走一阶
+            if (level < 0) level = 0;
+            if (level > p.steps) level = p.steps;
+            int target = BetterAudio.internalFor(level, p);
+            if (target != cur) {
+                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, target, 0);
+            }
+            volShown = target;
+            volAnchor = target;
+            showVol(level, target, p);
+            // 夜间增益复核延迟到音量落地后
+            h.removeCallbacks(volGain);
+            h.postDelayed(volGain, 350);
+        } catch (Throwable ignored) {}
+    }
+
+    /** v18: 长按轮询——兜住 repeat DOWN 不达 onKeyEvent 的场景。
+     *  检测到内部值变化且按键窗口活跃时，按推断方向吸附并刷新浮层；
+     *  900ms 无新键自动停，另设 400 tick 防呆上限。 */
+    private final Runnable volPoll = new Runnable() {
+        @Override public void run() {
+            try {
+                if (volPollTicks-- <= 0) return;
+                if (System.currentTimeMillis() - lastVolKeyAt > 900) return;
+                android.media.AudioManager am = (android.media.AudioManager)
+                        getSystemService(AUDIO_SERVICE);
+                int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
+                if (volShown >= 0 && cur != volShown) {
+                    snap(cur > volShown ? 1 : -1);
+                }
+            } catch (Throwable ignored) {}
+            h.postDelayed(this, 120);
+        }
+    };
 
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
@@ -161,17 +223,23 @@ public class HomeGuardService extends AccessibilityService {
             if (k != android.view.KeyEvent.KEYCODE_VOLUME_UP
                     && k != android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
                 return false;                            // 非音量键一律放行
-            if (!Config.get(this, Config.Key.FINEVOL))
-                return false;                            // 开关关：不显示浮层，纯原生
-            android.media.AudioManager am = (android.media.AudioManager)
-                    getSystemService(AUDIO_SERVICE);
-            int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-            int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
-            volAnchor = cur;
-            showVol(cur, max);                           // ROM 已落新值（queueing 层先于 a11y）
-            // v17: 夜间增益复核延迟到音量落地后（覆盖 0 静音/DP 挂载失败等场景）
-            h.removeCallbacks(volGain);
-            h.postDelayed(volGain, 350);
+            int action = event.getAction();
+            if (action != android.view.KeyEvent.ACTION_DOWN) {
+                // 松手（UP）/ MULTIPLE 不校正；长按收尾由 volPoll 的 900ms 窗口兜住
+                return false;
+            }
+            // 此后只剩 ACTION_DOWN（含长按 repeat）
+            lastVolKeyAt = System.currentTimeMillis();
+            BetterAudio.Preset p = BetterAudio.get(
+                    Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100));
+            if (!Config.get(this, Config.Key.FINEVOL) || BetterAudio.STOCK.equals(p.name))
+                return false;                            // 原厂模式/开关关：纯放行，不弹不改
+            int dir = (k == android.view.KeyEvent.KEYCODE_VOLUME_UP) ? 1 : -1;
+            snap(dir);                                   // 旁听后按曲线校正 + 弹浮层
+            // v18: 启动长按轮询（每次按键刷新窗口与防呆计数）
+            volPollTicks = 400;
+            h.removeCallbacks(volPoll);
+            h.post(volPoll);
             return false;                                // 纯旁听：一律放行
         } catch (Throwable tr) {
             Log.e(TAG, "onKeyEvent", tr);
