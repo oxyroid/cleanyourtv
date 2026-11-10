@@ -7,7 +7,8 @@ import android.preference.PreferenceFragment;
 
 /**
  * About screen: device identity with the console address and token, the
- * usage card (icon-style key hints), and the global reset.
+ * disclaimer, the usage card (icon-style key hints), and the global reset
+ * (behind a confirm dialog — it touches every switch).
  */
 public class AboutFragment extends PreferenceFragment {
 
@@ -26,12 +27,21 @@ public class AboutFragment extends PreferenceFragment {
         findPreference("reset").setOnPreferenceClickListener(
                 new Preference.OnPreferenceClickListener() {
                     @Override public boolean onPreferenceClick(Preference p) {
-                        Config.reset(getActivity());
-                        send(PilotService.ACT_APPLY_VOLUME);
-                        refresh();
+                        Ui.confirm(getActivity(), getString(R.string.t_reset),
+                                getString(R.string.reset_confirm),
+                                new Runnable() {
+                                    @Override public void run() { doReset(); }
+                                });
                         return true;
                     }
                 });
+    }
+
+    private void doReset() {
+        Config.reset(getActivity());
+        send(PilotService.ACT_APPLY_VOLUME);
+        refresh();
+        Ui.popup(getActivity(), getString(R.string.reset_done), 2600);
     }
 
     private void refresh() {

@@ -7,23 +7,32 @@
         android:selectable="false"/>
 
     <Preference
+        android:key="recommend"
+        android:title="@string/t_recommend"
+        android:summary="@string/s_recommend"/>
+
+    <Preference
         android:key="screen_guard"
         android:title="@string/screen_guard"
+        android:summary="@string/screen_guard_s"
         android:fragment="com.dbos.pilot.GuardFragment"/>
 
     <Preference
         android:key="screen_audio"
         android:title="@string/screen_audio"
+        android:summary="@string/screen_audio_s"
         android:fragment="com.dbos.pilot.AudioFragment"/>
 
     <Preference
         android:key="screen_maintenance"
         android:title="@string/screen_maintenance"
+        android:summary="@string/screen_maintenance_s"
         android:fragment="com.dbos.pilot.MaintenanceFragment"/>
 
     <Preference
         android:key="screen_about"
         android:title="@string/screen_about"
+        android:summary="@string/screen_about_s"
         android:fragment="com.dbos.pilot.AboutFragment"/>
 
 </PreferenceScreen>

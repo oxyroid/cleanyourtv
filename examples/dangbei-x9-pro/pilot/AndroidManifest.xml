@@ -23,16 +23,22 @@
         android:networkSecurityConfig="@xml/netsec"
         android:hasCode="true">
 
-        <activity android:name=".SettingsActivity"
+        <!-- Splash first: device check (informational, never blocking) and the
+             disclaimer, then straight into the settings. -->
+        <activity android:name=".SplashActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:theme="@android:style/Theme.DeviceDefault">
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <activity android:name=".SettingsActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.DeviceDefault"/>
 
         <!-- Settings bridge: the ROM resolves no standard Settings intents, so
              third-party launchers' Settings buttons die with "Can't open that

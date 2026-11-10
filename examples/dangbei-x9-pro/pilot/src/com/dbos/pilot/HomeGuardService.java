@@ -2,6 +2,7 @@ package com.dbos.pilot;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,21 +26,12 @@ import java.util.List;
  * Only the stock launcher's *main* HOME activity is corrected; its secondary
  * pages (the built-in market etc.) are pages the user opened and pass freely.
  *
- * Volume: on this ROM the volume keys are handled below the accessibility
- * layer (interceptKeyBeforeQueueing → dispatchDirectAudioEvent →
- * AudioService) — no key filter can change them, and the native step size is
- * controlled by persist.vendor.brand.simple (PilotService sets it to 1). This
- * service therefore only observes and, on top of the native ±1 steps, applies
- * the better-audio level curve (BetterAudio): after the ROM lands the new
- * value, it snaps to the nearest curve level and shows it in a
- * TYPE_ACCESSIBILITY_OVERLAY window (no toast — the system throttles those
- * after a few rapid presses; the overlay has no such limit).
- *
- * Long-press: repeat key events do not reliably reach the accessibility
- * layer, so a held volume key would freeze the overlay at its first value.
- * During a keypress window the service polls the stream volume every 120 ms,
- * re-snaps along the inferred direction and refreshes the overlay; the poll
- * self-stops 900 ms after the last key event.
+ * Volume: the curve logic itself lives in VolCurve (a plain
+ * VOLUME_CHANGED_ACTION receiver — no accessibility involved). This service
+ * only draws the exact-value overlay: the accessibility window type is the
+ * one overlay surface this ROM hands to third parties (SYSTEM_ALERT_WINDOW
+ * is never granted), and unlike toasts it does not throttle on rapid
+ * presses. When the guard is not connected, VolCurve falls back to a toast.
  */
 public class HomeGuardService extends AccessibilityService {
 
@@ -49,6 +41,9 @@ public class HomeGuardService extends AccessibilityService {
     public static volatile boolean connected = false;
     public static volatile String status = "not-connected";
     public static volatile String target = "?";
+
+    /** The connected instance, for the static overlay entry point. */
+    private static volatile HomeGuardService instance;
 
     private static final long DEBOUNCE_MS = 5000;
 
@@ -62,6 +57,7 @@ public class HomeGuardService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         connected = true;
+        instance = this;
         status = "connected";
         Log.i(TAG, "HomeGuard connected");
         h.postDelayed(periodic, 3000);
@@ -87,34 +83,35 @@ public class HomeGuardService extends AccessibilityService {
     @Override
     public void onInterrupt() { status = "interrupted"; }
 
-    // ---------------- volume: curve snap + overlay ----------------
-
-    public static volatile int volAnchor = -1;
+    // ---------------- exact-volume overlay ----------------
 
     private android.widget.TextView volView;
     private boolean volViewAdded = false;
-
-    private int volShown = -1;            // last internal value the overlay/snap landed on
-    private long lastVolKeyAt = 0;        // last volume-key event time
-    private int volPollTicks = 0;        // poll runaway guard
-
-    private final Runnable volHide = new Runnable() {
-        @Override public void run() {
-            try {
-                if (volViewAdded) {
-                    ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
-                            .removeView(volView);
-                    volViewAdded = false;
-                }
-            } catch (Throwable ignored) {}
-        }
-    };
 
     private int dp(int d) {
         return Math.round(d * getResources().getDisplayMetrics().density);
     }
 
-    private void showVol(int level, int internal, BetterAudio.Preset p) {
+    /**
+     * Display one volume value: the accessibility overlay when the guard is
+     * connected, a plain toast otherwise (called by VolCurve; also used by
+     * this service for boot-time display). Safe from any thread.
+     */
+    static void showVolume(Context ctx, int level, int internal, BetterAudio.Preset p) {
+        HomeGuardService svc = instance;
+        if (svc != null && connected) {
+            svc.showVolInner(level, internal, p);
+        } else {
+            try {
+                String txt = (internal == level)
+                        ? ctx.getString(R.string.vol_line, level, p.steps)
+                        : ctx.getString(R.string.vol_line_detail, level, p.steps, internal);
+                android.widget.Toast.makeText(ctx, txt, android.widget.Toast.LENGTH_SHORT).show();
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private void showVolInner(int level, int internal, BetterAudio.Preset p) {
         try {
             if (volView == null) {
                 volView = new android.widget.TextView(this);
@@ -155,83 +152,15 @@ public class HomeGuardService extends AccessibilityService {
         } catch (Throwable ignored) {}
     }
 
-    /**
-     * Curve snap: walk one level along the preset curve from the pre-press
-     * internal value and land it. With fine100 (level == internal value) the
-     * snap is a no-op — pure observation.
-     */
-    private void snap(int dir) {
-        try {
-            BetterAudio.Preset p = BetterAudio.get(
-                    Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100));
-            android.media.AudioManager am = (android.media.AudioManager)
-                    getSystemService(AUDIO_SERVICE);
-            int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-            int pre = Math.max(0, cur - dir);                 // undo the native ±1
-            int level = BetterAudio.levelFor(pre, p) + dir;   // one curve level
-            if (level < 0) level = 0;
-            if (level > p.steps) level = p.steps;
-            int target = BetterAudio.internalFor(level, p);
-            if (target != cur) {
-                // Never FLAG_SHOW_UI: the stock bar is suppressed via the
-                // controller, the overlay is the only display.
-                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, target, 0);
-            }
-            volShown = target;
-            volAnchor = target;
-            showVol(level, target, p);
-            h.removeCallbacks(volGain);
-            h.postDelayed(volGain, 350);
-        } catch (Throwable ignored) {}
-    }
-
-    /** Long-press poll: refresh the snap and overlay while the key is held. */
-    private final Runnable volPoll = new Runnable() {
+    private final Runnable volHide = new Runnable() {
         @Override public void run() {
             try {
-                if (volPollTicks-- <= 0) return;
-                if (System.currentTimeMillis() - lastVolKeyAt > 900) return;
-                android.media.AudioManager am = (android.media.AudioManager)
-                        getSystemService(AUDIO_SERVICE);
-                int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-                if (volShown >= 0 && cur != volShown) {
-                    snap(cur > volShown ? 1 : -1);
+                if (volViewAdded) {
+                    ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
+                            .removeView(volView);
+                    volViewAdded = false;
                 }
             } catch (Throwable ignored) {}
-            h.postDelayed(this, 120);
-        }
-    };
-
-    @Override
-    protected boolean onKeyEvent(android.view.KeyEvent event) {
-        try {
-            int k = event.getKeyCode();
-            if (k != android.view.KeyEvent.KEYCODE_VOLUME_UP
-                    && k != android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
-                return false;                       // non-volume keys: always pass
-            if (event.getAction() != android.view.KeyEvent.ACTION_DOWN)
-                return false;                       // UP/MULTIPLE: the poll window closes it
-            lastVolKeyAt = System.currentTimeMillis();
-            BetterAudio.Preset p = BetterAudio.get(
-                    Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100));
-            if (!Config.get(this, Config.Key.FINEVOL) || BetterAudio.STOCK.equals(p.name))
-                return false;                       // stock mode / switch off: pure pass-through
-            int dir = (k == android.view.KeyEvent.KEYCODE_VOLUME_UP) ? 1 : -1;
-            snap(dir);
-            volPollTicks = 400;
-            h.removeCallbacks(volPoll);
-            h.post(volPoll);
-            return false;                            // observation only, never consume
-        } catch (Throwable tr) {
-            Log.e(TAG, "onKeyEvent", tr);
-            return false;                           // on error, pass the key through
-        }
-    }
-
-    /** Night-gain recheck once the new volume has landed. */
-    private final Runnable volGain = new Runnable() {
-        @Override public void run() {
-            try { PilotService.applyNightGain(HomeGuardService.this); } catch (Throwable ignored) {}
         }
     };
 
@@ -245,6 +174,7 @@ public class HomeGuardService extends AccessibilityService {
     @Override
     public void onDestroy() {
         connected = false;
+        instance = null;
         status = "destroyed";
         try { volHide.run(); } catch (Throwable ignored) {}
         h.removeCallbacksAndMessages(null);

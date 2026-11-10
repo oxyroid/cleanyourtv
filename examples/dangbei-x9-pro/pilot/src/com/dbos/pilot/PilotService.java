@@ -71,6 +71,9 @@ public class PilotService extends Service {
     public static volatile String volNativeState = "init";
     public static volatile String otaState = "init";
 
+    /** The live service instance (VolCurve's night-gain recheck uses it). */
+    static volatile PilotService instance;
+
     private ExecutorService pool;
     private volatile boolean running = true;
     private PowerManager.WakeLock wakeLock;
@@ -78,11 +81,15 @@ public class PilotService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         startForegroundSafe();
         pool = Executors.newFixedThreadPool(8);
         startHttp();
         startUdp();
         scheduleKeepJob();
+        // Volume curve correction: a plain VOLUME_CHANGED_ACTION receiver,
+        // independent of the accessibility service.
+        VolCurve.install(this);
 
         // Start adbd once system_server is up (switch-controlled, retried).
         if (Config.get(this, Config.Key.ADBD)) {
@@ -152,6 +159,7 @@ public class PilotService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        instance = null;
         if (pool != null) pool.shutdownNow();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         super.onDestroy();
@@ -378,18 +386,61 @@ public class PilotService extends Service {
 
     private static final String GUARD_SVC = "com.dbos.pilot/.HomeGuardService";
 
-    /** Cleanly remove the guard from the enabled-services list (system unbinds it). */
-    static void disableHomeGuard(Context ctx) {
-        String cur = shStatic("settings get secure enabled_accessibility_services");
-        StringBuilder val = new StringBuilder();
-        for (String s : cur.split(":")) {
-            s = s.trim();
-            if (!s.isEmpty() && !"null".equals(s) && !s.contains("HomeGuardService")) {
-                if (val.length() > 0) val.append(':');
-                val.append(s);
+    /**
+     * Read the enabled accessibility services. This ROM denies
+     * `settings get secure enabled_accessibility_services` for both the
+     * app uid and the shell uid (INTERACT_ACROSS_USERS), but
+     * `dumpsys accessibility` prints the same list — read it there.
+     * Sections look like `Enabled services:{com.foo/.Bar,com.baz/.Qux}`.
+     */
+    static java.util.List<String> enabledServicesViaShell() {
+        java.util.ArrayList<String> out = new java.util.ArrayList<String>();
+        String d = LocalAdb.shell("dumpsys accessibility");
+        for (String line : d.split("\n")) {
+            int i = line.indexOf("Enabled services:");
+            if (i < 0) continue;
+            String body = line.substring(i + "Enabled services:".length()).trim();
+            if (body.startsWith("{") && body.endsWith("}")) {
+                body = body.substring(1, body.length() - 1);
+            } else {
+                continue;   // not the set-printing line
+            }
+            if (body.isEmpty()) continue;
+            for (String s : body.split(",")) {
+                s = s.trim().replace("[", "").replace("]", "");
+                if (!s.isEmpty() && !out.contains(s)) out.add(s);
             }
         }
-        shStatic("settings put secure enabled_accessibility_services " + val);
+        return out;
+    }
+
+    /** Merge the guard into the enabled list and enable accessibility (shell). */
+    private static boolean grantGuardViaShell() {
+        StringBuilder val = new StringBuilder();
+        for (String s : enabledServicesViaShell()) {
+            if (s.contains("HomeGuardService")) continue;
+            if (val.length() > 0) val.append(':');
+            val.append(s);
+        }
+        if (val.length() > 0) val.append(':');
+        val.append(GUARD_SVC);
+        String r1 = LocalAdb.shell("settings put secure enabled_accessibility_services "
+                + shellQuote(val.toString()));
+        String r2 = LocalAdb.shell("settings put secure accessibility_enabled 1");
+        return r1.isEmpty() && r2.isEmpty();
+    }
+
+    /** Cleanly remove the guard from the enabled-services list (system unbinds it). */
+    static void disableHomeGuard(Context ctx) {
+        StringBuilder val = new StringBuilder();
+        for (String s : enabledServicesViaShell()) {
+            if (s.contains("HomeGuardService")) continue;
+            if (val.length() > 0) val.append(':');
+            val.append(s);
+        }
+        LocalAdb.shell("settings put secure enabled_accessibility_services " + shellQuote(val.toString()));
+        LocalAdb.shell("settings put secure accessibility_enabled "
+                + (val.length() == 0 ? 0 : 1));
     }
 
     /** Stateless shell helper for code paths without a service instance. */
@@ -418,18 +469,11 @@ public class PilotService extends Service {
             lastStatus = "homeguard connected";
             return;
         }
-        String cur = sh("settings get secure enabled_accessibility_services").trim();
-        Log.i(TAG, "homeguard repair: cur=[" + cur + "] attempt=" + attempt);
-        StringBuilder others = new StringBuilder();
-        for (String c : cur.split(":")) {
-            c = c.trim();
-            if (c.isEmpty() || "null".equals(c) || c.contains("HomeGuardService")) continue;
-            if (others.length() > 0) others.append(':');
-            others.append(c);
-        }
-        String val = others.length() == 0 ? GUARD_SVC : others + ":" + GUARD_SVC;
-        sh("settings put secure enabled_accessibility_services " + val);
-        sh("settings put secure accessibility_enabled 1");
+        // The repair writes through the shell channel: this ROM denies
+        // `settings` to the app uid entirely.
+        ensureAdbd(0);
+        Log.i(TAG, "homeguard repair attempt " + attempt);
+        boolean ok = grantGuardViaShell();
         sleep(4000);
         if (HomeGuardService.connected) {
             lastStatus = "homeguard repaired";
@@ -440,7 +484,8 @@ public class PilotService extends Service {
             sleep(6000);
             ensureHomeGuard(attempt + 1);
         } else {
-            lastStatus = "homeguard repair failed; cur=" + cur;
+            lastStatus = "homeguard repair failed" + (ok ? " (grant written, no connect)"
+                    : " (shell write failed)");
             Log.e(TAG, lastStatus);
         }
     }
@@ -460,23 +505,14 @@ public class PilotService extends Service {
                     "setprop ctl.start adbd").redirectErrorStream(true).start();
             try { p.waitFor(); } catch (Throwable ignored) {}
             Thread.sleep(2500);
-            String cur = shStatic("settings get secure enabled_accessibility_services").trim();
-            StringBuilder val = new StringBuilder();
-            for (String c : cur.split(":")) {
-                c = c.trim();
-                if (c.isEmpty() || "null".equals(c) || c.contains("HomeGuardService")) continue;
-                if (val.length() > 0) val.append(':');
-                val.append(c);
-            }
-            if (val.length() > 0) val.append(':');
-            val.append(GUARD_SVC);
-            String r1 = LocalAdb.shell("settings put secure enabled_accessibility_services "
-                    + shellQuote(val.toString()));
-            String r2 = LocalAdb.shell("settings put secure accessibility_enabled 1");
+            // Grants go through the shell channel: enabled-services merge +
+            // accessibility master switch + the secure-settings permission.
+            // (Reading the current list uses dumpsys — see
+            // enabledServicesViaShell; `settings get` is denied even for shell.)
+            boolean ok = grantGuardViaShell();
             String r3 = LocalAdb.shell("pm grant com.dbos.pilot android.permission.WRITE_SECURE_SETTINGS");
-            // LocalAdb returns "" on success; "[adb] …" is a diagnostic failure.
-            boolean ok = r1.isEmpty() && r2.isEmpty() && r3.isEmpty();
-            return ok ? "granted" : ("r1=" + r1 + " r2=" + r2 + " r3=" + r3);
+            return ok && r3.isEmpty() ? "granted" : "grant err (list="
+                    + enabledServicesViaShell() + " r3=" + r3 + ")";
         } catch (Throwable t) {
             return "err: " + t;
         }
@@ -659,7 +695,6 @@ public class PilotService extends Service {
                 if (next < 0) next = 0;
                 if (next > max) next = max;
                 am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, next, 0);
-                HomeGuardService.volAnchor = next;
                 applyNightGain(this);
                 cur = next;
             }

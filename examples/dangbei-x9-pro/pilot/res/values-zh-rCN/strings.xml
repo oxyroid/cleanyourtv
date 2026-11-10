@@ -1,13 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DBOS 领航</string>
-    <string name="homeguard_desc">原厂桌面回到前台时自动切回你选择的桌面；按音量键时显示精确音量值。</string>
+    <string name="homeguard_desc">原厂桌面回到前台时自动切回你选择的桌面；并绘制精确音量浮层。</string>
 
+    <!-- splash -->
+    <string name="splash_tag">让电视更干净的小工具</string>
+    <string name="splash_device">当前设备：%1$s\n已验证设备：%2$s</string>
+    <string name="splash_ok">与已验证组合完全一致，以下功能均按描述工作。</string>
+    <string name="splash_warn">机型或系统版本与已验证组合不同。本套件针对已验证组合调校——功能可能异常或无效，风险自负。</string>
+    <string name="splash_legal">本软件仅供学习目的使用。使用即代表你同意在 24 小时内自行删除。</string>
+    <string name="splash_enter">按%1$s进入</string>
+
+    <!-- root -->
     <string name="status_title">设备</string>
+    <string name="st_guard">桌面守护</string>
+    <string name="st_shell">Shell</string>
+    <string name="st_ota">更新已屏蔽</string>
+    <string name="st_curve">曲线：%1$s</string>
+    <string name="t_recommend">使用推荐设置</string>
+    <string name="s_recommend">感知音量 + 桌面守护 + 屏蔽更新，一键完成</string>
+    <string name="rec_title">应用推荐设置？</string>
+    <string name="rec_will">将会更改：</string>
+    <string name="rec_keeps">已是推荐状态（保持不变）：</string>
+    <string name="rec_vol">· 音量曲线 → 感知（40 阶）</string>
+    <string name="rec_vol_already">· 音量曲线：感知</string>
+    <string name="rec_guard">· 桌面守护 → 开</string>
+    <string name="rec_guard_already">· 桌面守护：开</string>
+    <string name="rec_boot">· 开机进我的桌面 → 开</string>
+    <string name="rec_boot_already">· 开机进我的桌面：开</string>
+    <string name="rec_ota">· 屏蔽系统更新 → 开</string>
+    <string name="rec_ota_already">· 屏蔽系统更新：开</string>
+    <string name="rec_grant">· 授予无障碍与系统设置权限</string>
+    <string name="rec_grant_already">· 权限：已授予</string>
+    <string name="rec_grant_hint">权限已授予，守护数秒内连接。</string>
+    <string name="rec_nothing">已是推荐设置，无需更改。</string>
+    <string name="rec_done">推荐设置已应用。</string>
+    <string name="rec_grant_fail">设置已应用，但自助授权失败。\n</string>
+    <string name="grant_wait">授权中…</string>
+    <string name="grant_ok">✓ 已授权。守护数秒内连接。</string>
+    <string name="grant_fail">✗ 授权失败</string>
+    <string name="repair_ok">✓ 守护已修复。</string>
+    <string name="repair_wait">修复进行中——请看状态行。</string>
+    <string name="restore_done">✓ 已恢复原厂音量（重启后原厂音量条回归）。</string>
+    <string name="reset_confirm">一切恢复 Pilot 默认值：曲线→fine100、logd 关、屏蔽更新开。继续？</string>
+    <string name="reset_done">✓ 已重置全部设置。</string>
+
     <string name="screen_guard">桌面守护</string>
+    <string name="screen_guard_s">桌面防守 · 权限 · 桌面选择</string>
     <string name="screen_audio">声音</string>
+    <string name="screen_audio_s">音量曲线 · 夜间增益</string>
     <string name="screen_maintenance">远程与维护</string>
+    <string name="screen_maintenance_s">ADB · logd · 更新屏蔽</string>
     <string name="screen_about">关于</string>
+    <string name="screen_about_s">设备 · 操作 · 重置</string>
 
     <string name="t_adbd">开机自启 ADB</string>
     <string name="s_adbd">远程管理依赖此选项</string>
@@ -40,13 +85,18 @@
     <string name="s_grant">一键授予无障碍与系统设置权限（无需电脑）</string>
     <string name="t_repair">修复守护</string>
     <string name="s_repair">授权被清理后自动修回</string>
-    <string name="t_homefix">开机桌面纠偏</string>
-    <string name="s_homefix">开机后确保进入你的桌面的备用层</string>
+    <string name="t_homefix">开机进我的桌面</string>
+    <string name="s_homefix">开机后原厂桌面赖着不走时把它换下来。重启后又见到原厂桌面就开它。</string>
 
     <string name="t_reset">重置全部设置</string>
     <string name="s_reset">一切恢复 Pilot 默认配置</string>
     <string name="usage_title">操作</string>
-    <string name="usage_summary">▲▼ 移动 · ⏎ 确认 · ◀▶ 调整\n应急控制台：手机或电脑打开 http://&lt;本机 IP&gt;:8765/ui</string>
+    <string name="usage_summary">▲▼ 移动 · [ OK ] 确认 · ◀▶ 调整\n应急控制台：http://&lt;本机 IP&gt;:8765/ui</string>
+
+    <string name="dep_grant">需要无障碍授权——请先点上方「自助授权」</string>
+    <string name="dep_adbd">需要 ADB 运行——请打开「开机自启 ADB」</string>
+
+    <string name="about_legal">仅供学习目的。请在 24 小时内自行删除。</string>
 
     <string name="vol_line">音量 %1$d/%2$d</string>
     <string name="vol_line_detail">音量 %1$d/%2$d（%3$d/100）</string>

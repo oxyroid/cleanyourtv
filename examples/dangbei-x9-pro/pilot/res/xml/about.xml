@@ -2,6 +2,12 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
 
     <Preference
+        android:key="legal"
+        android:title="@string/app_name"
+        android:summary="@string/about_legal"
+        android:selectable="false"/>
+
+    <Preference
         android:key="device"
         android:title="@string/status_title"
         android:selectable="false"/>

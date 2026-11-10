@@ -12,8 +12,12 @@ import java.util.List;
 
 /**
  * Guard screen: the home-guard switch, the launcher picker (default: the
- * automatic rule — first third-party launcher), the one-tap self-grant that
- * arms the whole app without a PC, guard repair, and the boot home fix.
+ * automatic rule — first third-party launcher), the one-tap self-grant
+ * (with a floating result card), guard repair, and the boot-launch fallback.
+ *
+ * Disabled rows: while a dependency is missing the row is greyed out and
+ * its summary says which dependency it needs — the summary of an *enabled*
+ * row never carries the warning text.
  */
 public class GuardFragment extends PreferenceFragment {
 
@@ -55,37 +59,68 @@ public class GuardFragment extends PreferenceFragment {
 
         buildLauncherList();
 
-        Preference grant = findPreference("grant");
+        final Preference grant = findPreference("grant");
         grant.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
             @Override public boolean onPreferenceClick(final Preference p) {
-                p.setSummary("…");
-                final Thread t = new Thread(new Runnable() {
+                Ui.popup(getActivity(), getString(R.string.grant_wait), 2000);
+                new Thread(new Runnable() {
                     @Override public void run() {
                         final String r = PilotService.selfGrant(getActivity());
                         h.post(new Runnable() {
                             @Override public void run() {
                                 if (!isAdded()) return;
-                                p.setSummary("granted".equals(r)
-                                        ? getString(R.string.s_grant) : (r + " *"));
+                                boolean ok = "granted".equals(r);
+                                Ui.popup(getActivity(),
+                                        getString(ok ? R.string.grant_ok : R.string.grant_fail)
+                                                + (ok ? "" : "\n" + r),
+                                        ok ? 3000 : 5000);
+                                refreshGates();
                             }
                         });
                     }
-                });
-                t.setDaemon(true);
-                t.start();
+                }).start();
                 return true;
             }
         });
 
         findPreference("repair").setOnPreferenceClickListener(
                 new Preference.OnPreferenceClickListener() {
-                    @Override public boolean onPreferenceClick(Preference p) {
+                    @Override public boolean onPreferenceClick(final Preference p) {
                         send(PilotService.ACT_REPAIR_GUARD);
+                        // The repair takes a few seconds; the live status line
+                        // below reflects it, and a card confirms when it lands.
+                        h.postDelayed(new Runnable() {
+                            @Override public void run() {
+                                if (!isAdded()) return;
+                                Ui.popup(getActivity(), getString(HomeGuardService.connected
+                                        ? R.string.repair_ok : R.string.repair_wait),
+                                        HomeGuardService.connected ? 2200 : 4000);
+                            }
+                        }, 5000);
                         return true;
                     }
                 });
 
+        refreshGates();
         mark();
+    }
+
+    /**
+     * Gate rows on their dependencies while keeping the normal summary for
+     * available rows: home guard, repair and the launcher picker need the
+     * accessibility grant (the boot fallback runs its am-start as the app
+     * itself, so it has no extra dependency).
+     */
+    private void refreshGates() {
+        boolean guard = Ui.guardLive();
+        Ui.gate(getActivity(), findPreference(Config.Key.HOMEGUARD), guard,
+                getString(R.string.s_homeguard),
+                getString(R.string.dep_grant));
+        Ui.gate(getActivity(), findPreference("repair"), guard,
+                getString(R.string.s_repair),
+                getString(R.string.dep_grant));
+        Ui.gate(getActivity(), findPreference(Config.Key.HOMETARGET), guard,
+                "", getString(R.string.dep_grant));
     }
 
     /** Launcher picker: Auto (the automatic rule) + every installed HOME candidate. */
@@ -140,7 +175,6 @@ public class GuardFragment extends PreferenceFragment {
         } else {
             changed = Config.changedFromDefault(getActivity(), key);
         }
-        String t = getString(titleRes);
-        p.setTitle(changed ? t + " *" : t);
+        p.setTitle(Ui.marked(getActivity(), titleRes, changed));
     }
 }

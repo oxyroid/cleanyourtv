@@ -1,13 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DBOS Pilot</string>
-    <string name="homeguard_desc">Watches for the stock launcher coming to the front and switches back to the launcher you chose. Also shows the exact volume value when volume keys are pressed.</string>
+    <string name="homeguard_desc">Watches for the stock launcher coming to the front and switches back to the launcher you chose. Also draws the exact-volume overlay.</string>
 
+    <!-- splash -->
+    <string name="splash_tag">A small toolbox for a cleaner TV</string>
+    <string name="splash_device">Device: %1$s\nTested on: %2$s</string>
+    <string name="splash_ok">This is exactly the tested combination. Everything below is verified to behave as described.</string>
+    <string name="splash_warn">Different model or OS build than tested. This set was tuned on the tested combination — features may misbehave or do nothing. Proceed at your own risk.</string>
+    <string name="splash_legal">This software is for learning purposes only. By using it you agree to remove it within 24 hours.</string>
+    <string name="splash_enter">Press%1$sto enter</string>
+
+    <!-- root -->
     <string name="status_title">Device</string>
+    <string name="st_guard">Home guard</string>
+    <string name="st_shell">Shell</string>
+    <string name="st_ota">Update blocked</string>
+    <string name="st_curve">curve: %1$s</string>
+    <string name="t_recommend">Use recommended setup</string>
+    <string name="s_recommend">Perceptual volume + home guard + OTA block, in one tap</string>
+    <string name="rec_title">Apply recommended setup?</string>
+    <string name="rec_will">Will change:</string>
+    <string name="rec_keeps">Already as recommended (unchanged):</string>
+    <string name="rec_vol">· Volume curve → perceptual (40 steps)</string>
+    <string name="rec_vol_already">· Volume curve: perceptual</string>
+    <string name="rec_guard">· Home guard → on</string>
+    <string name="rec_guard_already">· Home guard: on</string>
+    <string name="rec_boot">· Launch my launcher at boot → on</string>
+    <string name="rec_boot_already">· Launch my launcher at boot: on</string>
+    <string name="rec_ota">· Block system updates → on</string>
+    <string name="rec_ota_already">· Block system updates: on</string>
+    <string name="rec_grant">· Grant accessibility + secure settings</string>
+    <string name="rec_grant_already">· Permissions: granted</string>
+    <string name="rec_grant_hint">Permissions granted; the guard connects within seconds.</string>
+    <string name="rec_nothing">Already the recommended setup — nothing to change.</string>
+    <string name="rec_done">Recommended setup applied.</string>
+    <string name="rec_grant_fail">Setup applied, but self-grant failed.\n</string>
+    <string name="grant_wait">Granting…</string>
+    <string name="grant_ok">✓ Granted. The guard connects within seconds.</string>
+    <string name="grant_fail">✗ Grant failed</string>
+    <string name="repair_ok">✓ Guard repaired.</string>
+    <string name="repair_wait">Repair still in progress — check the status line.</string>
+    <string name="restore_done">✓ Stock volume restored (bar returns after a reboot).</string>
+    <string name="reset_confirm">Everything goes back to Pilot defaults: perceptual→fine100, home guard stays on if you chose it, logd off, OTA block on. Continue?</string>
+    <string name="reset_done">✓ All settings reset.</string>
+
     <string name="screen_guard">Home guard</string>
+    <string name="screen_guard_s">Desktop defense · permissions · launcher</string>
     <string name="screen_audio">Sound</string>
+    <string name="screen_audio_s">Volume curve · night gain</string>
     <string name="screen_maintenance">Remote &amp; maintenance</string>
+    <string name="screen_maintenance_s">ADB · logd · update block</string>
     <string name="screen_about">About</string>
+    <string name="screen_about_s">Device · usage · reset</string>
 
     <string name="t_adbd">ADB at boot</string>
     <string name="s_adbd">Remote shells depend on this</string>
@@ -40,13 +85,18 @@
     <string name="s_grant">Grants accessibility + secure settings in one tap (no PC)</string>
     <string name="t_repair">Repair guard</string>
     <string name="s_repair">Re-arms the guard if its grant was cleared</string>
-    <string name="t_homefix">Boot home fix</string>
-    <string name="s_homefix">Fallback layer that launches your launcher after boot</string>
+    <string name="t_homefix">Launch my launcher at boot</string>
+    <string name="s_homefix">Opens after boot when the stock launcher would not let go. Turn on if you come back to the stock desktop after restarting.</string>
 
     <string name="t_reset">Reset all settings</string>
     <string name="s_reset">Everything back to Pilot defaults</string>
     <string name="usage_title">Usage</string>
-    <string name="usage_summary">▲▼ Move · ⏎ OK · ◀▶ Adjust\nEmergency console: open http://&lt;this IP&gt;:8765/ui on a phone or PC</string>
+    <string name="usage_summary">▲▼ move · [ OK ] confirm · ◀▶ adjust\nEmergency console: http://&lt;this IP&gt;:8765/ui</string>
+
+    <string name="dep_grant">Needs the accessibility grant — use “Self-grant permissions” above</string>
+    <string name="dep_adbd">Needs ADB running — turn “ADB at boot” on</string>
+
+    <string name="about_legal">For learning purposes only. Please remove within 24 hours.</string>
 
     <string name="vol_line">Volume %1$d/%2$d</string>
     <string name="vol_line_detail">Volume %1$d/%2$d (%3$d/100)</string>

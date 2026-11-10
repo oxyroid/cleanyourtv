@@ -2,18 +2,24 @@ package com.dbos.pilot;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
 import android.preference.ListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceFragment;
 import android.preference.PreferenceScreen;
 
 /**
- * Sound screen: the better-audio preset (primary entry point — it derives the
- * three low-level switches), the switches themselves for fine-tuning, and the
- * one-tap factory restore.
+ * Sound screen: the better-audio preset (primary entry point — it derives
+ * the three low-level switches), the switches themselves for fine-tuning,
+ * and the one-tap factory restore.
+ *
+ * Disabled rows: the ±1 grid and the stock-bar cut both go through the
+ * shell channel (LocalAdb), so while adbd is down the switch rows are
+ * greyed out and their summaries say so — the enabled summaries never do.
  */
 public class AudioFragment extends PreferenceFragment {
 
+    private final Handler h = new Handler();
     private ListPreference curve;
 
     @Override
@@ -35,6 +41,7 @@ public class AudioFragment extends PreferenceFragment {
                 applyVolume();
                 updateCurve(name);
                 mark();
+                refreshGates();
                 return true;   // we already persisted it ourselves
             }
         });
@@ -45,7 +52,22 @@ public class AudioFragment extends PreferenceFragment {
         bind(Config.Key.FINEVOL, R.string.t_finevol);
         bind(Config.Key.VOLOSD, R.string.t_volosd);
         bind(Config.Key.NIGHTGAIN, R.string.t_nightgain);
+        refreshGates();
         mark();
+    }
+
+    /** The shell-dependent rows grey out when adbd is down. */
+    private void refreshGates() {
+        boolean shell = Ui.shellLive();
+        String cur = Config.getStr(getActivity(), Config.Key.VOLCURVE, BetterAudio.FINE100);
+        Ui.gate(getActivity(), curve, shell, curveSummary(cur),
+                getString(R.string.dep_adbd));
+        Ui.gate(getActivity(), findPreference(Config.Key.FINEVOL), shell,
+                getString(R.string.s_finevol),
+                getString(R.string.dep_adbd));
+        Ui.gate(getActivity(), findPreference(Config.Key.VOLOSD), shell,
+                getString(R.string.s_volosd),
+                getString(R.string.dep_adbd));
     }
 
     /** Switch → Config + immediate maintenance pass. */
@@ -84,18 +106,23 @@ public class AudioFragment extends PreferenceFragment {
                 updateCurve(BetterAudio.STOCK);
             }
             mark();
+            Ui.popup(getActivity(), getString(R.string.restore_done), 2600);
             return true;
         }
         return super.onPreferenceTreeClick(screen, p);
     }
 
     private void updateCurve(String name) {
+        if (curve != null) curve.setSummary(curveSummary(name));
+    }
+
+    private String curveSummary(String name) {
         int res;
         if (BetterAudio.STOCK.equals(name)) res = R.string.s_curve_stock;
         else if (BetterAudio.STEP30.equals(name)) res = R.string.s_curve_step30;
         else if (BetterAudio.PERCEPTUAL.equals(name)) res = R.string.s_curve_perceptual;
         else res = R.string.s_curve_fine100;
-        curve.setSummary(res);
+        return getString(res);
     }
 
     private void mark() {
@@ -114,7 +141,6 @@ public class AudioFragment extends PreferenceFragment {
         } else {
             changed = Config.changedFromDefault(getActivity(), key);
         }
-        String t = getString(titleRes);
-        p.setTitle(changed ? t + " *" : t);
+        p.setTitle(Ui.marked(getActivity(), titleRes, changed));
     }
 }

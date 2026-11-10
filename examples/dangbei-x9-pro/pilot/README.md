@@ -1,4 +1,4 @@
-# Scout — the rescue channel for DBOS projectors
+# Pilot — the way in for DBOS projectors
 
 **This is not part of the debloat lists.** It lives beside them because every Dangbei DBOS firmware
 shares one problem: there is no way in. No Developer options, no `com.android.settings`, no adbd at
@@ -6,176 +6,153 @@ boot — the ROM ships adbd fully configured (`ro.adb.secure=0`, `persist.adb.tc
 starts it, and no stock screen lets you start it either. Until you have a shell, no list on
 [examples/](../../README.md) can be applied at all.
 
-Scout is that way in: a ~42 KB sideloaded APK, plain Java, no dependencies, no AndroidX, that runs
-on the TV and opens the door from the inside. Copy [dist/DBOSScout.apk](dist/DBOSScout.apk) to a USB stick, install it
-with the stock file manager, open it once — and ADB is up for the session. Everything else is
-optional.
+Pilot is that way in: a ~75 KB sideloaded APK, plain Java, no dependencies, no AndroidX, that runs
+on the TV and opens the door from the inside — and then keeps the set manageable without ever
+needing a computer again. Copy [dist/DBOSPilot.apk](dist/DBOSPilot.apk) to a USB stick, install it
+with the stock file manager, open it once. Everything else is optional and switchable inside the app.
 
-It was built for, and tested on, a Dangbei X9 Pro (DBOS 2.6, Android 14). The DBOS family shares the
-launcher and the boot-control behaviour, so it should apply to other DBOS 2.x sets; nothing in it is
-X9-Pro-specific except the settings-bridge table, which you extend per model.
+Built for, and tuned on, a Dangbei X9 Pro (Android 14). The app checks the model and OS build at
+every launch and says so — a different set is *not* refused, but the splash calls out the risk,
+since the shell commands and volume internals below are firmware-specific. The software is for
+learning purposes only; the splash and the About screen carry the disclaimer.
+
+## What the app is
+
+The whole app is a preference tree (the platform's own `PreferenceFragment` UI — standard D-pad
+navigation, toggles and list dialogs match the system look), localized in English, 简体中文 and
+繁體中文:
+
+- **Splash** — device check (model + OS build against the tested combination, informational only,
+  never blocking) and the disclaimer. Any key or 3 seconds moves on.
+- **Device** — live status in compact lines (IP + console URL, home guard / shell / update-block
+  states, current curve) and **Use recommended setup**: one tap applies the tuned combination.
+  It first shows exactly what will change and what already matches; confirm applies, cancel keeps
+  everything as-is.
+- **Home guard** — the guard switch, the launcher picker, self-grant, repair, and the boot-launch
+  fallback.
+- **Sound** — the volume curve preset, the low-level switches, night gain, factory restore.
+- **Remote & maintenance** — adbd at boot, IP broadcast, logd, system-update block.
+- **About** — device identity, console address + token, key hints, reset (behind a confirm).
+
+Rows the user moved away from the default get a `*` after the title. Rows whose underlying
+capability is unavailable are greyed out, with the missing dependency named in the summary —
+for example the shell-acting switches while ADB is down, or the guard rows before the
+accessibility grant exists.
 
 ## Why it exists
 
-- **No entry point.** DBOS 2.6 has no Developer options; the old "install Android Settings, tap the
-  build number" trick is dead (`com.android.settings` is absent). But the ROM lets *any installed
-  app* run `setprop ctl.start adbd` — a plain `Runtime.exec`, no permission dialog. Scout is a
-  one-tap wrapper around that line.
+- **No entry point.** DBOS has no Developer options and no Settings app, but the ROM lets *any
+  installed app* run `setprop ctl.start adbd` — a plain `Runtime.exec`, no permission dialog.
 - **No self-start for ordinary apps.** The ROM delivers `BOOT_COMPLETED` to third-party receivers
   but refuses to start their processes for it. A JobScheduler **persisted** job is the one
   self-start path that survives, because the system's own JobSchedulerService pulls the process.
-  Scout arms one on first launch.
-- **IP drift.** TVs don't keep their DHCP address. Scout broadcasts its address over UDP so the
-  computer finds the set without guessing.
+  Pilot arms one on first launch.
+- **IP drift.** The TV broadcasts its address over UDP so a computer can find it after a DHCP change.
 
-## Install and first run
+## Zero-PC onboarding
 
-```
-adb install dist/DBOSScout.apk        # or sideload from USB before ADB exists
-adb shell am start -n com.dbos.scout/.MainActivity
-```
+The guards need two grants that only the shell can hand out. Pilot does it without a computer:
+the **Self-grant permissions** row starts adbd by itself, then drives the local ADB channel
+(a ~150-line ADB client speaking the wire protocol directly) to write the accessibility grant
+and `pm grant` the secure-settings permission. A floating card reports the result — success or
+the raw failure reason — and the guard connects within seconds.
 
-Opening the app once:
+Note what this ROM denies: the `settings` command is refused to the *app* uid entirely, and
+`settings get` is refused even to the shell uid (`INTERACT_ACROSS_USERS`). So Pilot reads the
+enabled-services list from `dumpsys accessibility` (shell-readable) and writes through the shell
+channel. Repair — when the ROM's cleaner strips the grant — uses the same path and re-arms
+automatically at process start.
 
-1. starts the foreground service (the persistent notification is deliberate — it keeps the process
-   alive and tells you it is running),
-2. runs `setprop ctl.start adbd` (25 s after every boot, retried 5 times),
-3. arms the persisted Job 778 self-continuing chain — each run reschedules the next, so at any
-   moment the system holds an already-due job that fires soon after the next boot,
-4. starts announcing itself on UDP so you can find the set after an IP change.
+## The volume chain (no accessibility involved)
 
-**Important:** the Job chain lives in `/data`. A firmware reflash wipes it — after any reflash,
-install Scout and open it once again.
+DBOS handles volume keys *below* every app layer — `interceptKeyBeforeQueueing` →
+`dispatchDirectAudioEvent` → `AudioService` steps the volume before anything can filter it.
+Three pieces make the steps usable anyway:
 
-### Finding the TV
+1. **Native ±1 steps**: `AudioService.adjustSuggestedStreamVolume` reads
+   `persist.vendor.brand.simple` (factory 10, step ×5). Pilot sets it to 1 over the shell
+   channel — a persistent property, so this survives reboots.
+2. **Curve correction without key events**: key-event observers only ever see a *copy* of the
+   press and race the native step (at the bottom edge the correction could land before the
+   native step and the next press jumped two levels — a real, reproducible bug). Pilot instead
+   listens to `VOLUME_CHANGED_ACTION`, the broadcast AudioService sends for every landed change:
+   `last+1` means one curve level up from the last landed value, `last-1` one down, anything
+   else is an external set and only displayed. Reacting to the *landed* value removes the race
+   by construction; our own correction echoes back as another broadcast and is ignored. This
+   works with the accessibility service off entirely.
+3. **The display**: the stock OSD's scale cannot show single steps, so Pilot suppresses it —
+   `service call audio 92` is `IAudioService.setVolumeController(null)` on this firmware, run
+   over the shell channel where the shell holds `STATUS_BAR_SERVICE` — and draws the exact
+   value in its own overlay. The overlay surface a third party may use here is the
+   accessibility window type; without the guard connected a toast is used instead. SystemUI
+   re-registers its controller at every boot, so the suppression is re-checked every 5 minutes;
+   getting the stock bar back needs one reboot.
 
-Scout answers `DBOS?` on UDP port 9999 and also broadcasts `DBOS6 {json}` to 255.255.255.255:9998
-for the first three minutes after every boot:
+**Curve presets** (`volcurve`): `stock` (factory ±5, stock OSD), `fine100` (100 steps 1:1, zero
+correction — the default), `step30` (30 linear steps), `perceptual` (40 steps on a quadratic
+curve pinned at f(1)=1 and f(40)=100: one internal value per step at the quiet end, ~6 at the
+top). All presets keep ≥20 steps and strict monotonicity, so no press is ever a no-op. Switching
+presets re-maps the level only — the loudness you hear does not jump.
 
-```
-python3 - <<'EOF'
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-s.bind(("", 9998))
-print(s.recvfrom(65535))
-EOF
-```
+**Night gain**: below 1 there is only mute, so a `DynamicsProcessing` effect on the global output
+mix attenuates 18/12/6 dB while the volume sits at 1/2/3. If the effect cannot attach, the
+feature degrades to no attenuation, never to broken audio.
 
-### HTTP console
+## Home guard
 
-Scout serves an HTTP console on port 8765 of the TV. `http://<tv-ip>:8765/ui` is the WebUI (status
-cards, feature switches, quick buttons, remote shell); state endpoints are open, action endpoints
-need the token as `?k=<token>` (the token is printed in the app and in `/whoami`). Main routes:
+The stock launcher grabs the foreground at boot and after some of its own pages close; one-shot
+takeovers get stolen back. The guard is an accessibility service subscribed to window events
+plus a 4-second poll: when the stock launcher's *main* HOME activity comes to the front, it
+launches the user's launcher again. Secondary stock pages (the built-in market and friends) pass
+freely, and the target is resolved dynamically — **the launcher picker** defaults to "auto: first
+third-party launcher" and accepts any installed HOME activity.
+
+**Launch my launcher at boot** is the shell-free fallback: after boot, if the stock desktop is
+still in front, it starts the user's launcher. Turn it on when a restart lands you on the stock
+desktop.
+
+## Block system updates
+
+The update front-end (`com.xgimi.upgrade`) is a uid-1000 system package — untouchable, and
+disabling it crashes `system_server` at boot. The safe lever is the A/B payload applier:
+`update_engine` is a root init daemon and `ctl.stop` is idempotent and fully reversible. With
+the switch on, Pilot keeps the engine stopped (re-checked every 5 minutes, so a reboot's
+exposure window is short); off restores updates.
+
+## HTTP console
+
+Pilot serves port 8765 on the TV. `http://<tv-ip>:8765/ui` is the emergency WebUI for when the
+app cannot be opened; state routes are open, action routes need the token as `?k=<token>`
+(printed in the app and in `/whoami`).
 
 | Route | What it does |
 |---|---|
-| `/whoami` | Status: IPs, adbd state, guard status, volume chain, preset, logd |
+| `/whoami` | Status: IPs, adbd, guard, volume chain, preset, update engine |
 | `/ui` | The WebUI page |
-| `/sh?c=<command>&k=…` | Run a shell command, return output |
-| `/adbstart` | `setprop ctl.start adbd` on demand |
-| `/config` | Read/write the feature switches; `?volcurve=<preset>` switches better-audio |
-| `/reset` | Restore Scout's default configuration (all switches and the preset) |
-| `/pkg` | Installed packages |
+| `/config` | Read/write the switches; `?volcurve=<preset>` switches the curve |
 | `/vol` | Volume read/set (internal 0–100 values) |
-
-The app panel itself is remote-first (leanback): D-pad up/down selects, OK toggles/executes,
-left/right cycles the better-audio preset, every row carries a stable slug (`home-guard`,
-`better-audio`, `reset-scout`, …) plus the description, and `restore-stock`/`reset-scout` rows
-give the factory-volume and default-configuration escape hatches. The manifest declares
-`LEANBACK_LAUNCHER`, so TV launchers list it as a TV app.
-
-## The optional guards (each can be switched off)
-
-All of this is off-able from the WebUI, the app's own remote-friendly settings panel, or `/config`.
-Defaults are on, because the guards are why a headless set stays manageable:
-
-- **adbd self-start** (`adbd_on`): the 25 s post-boot `ctl.start adbd` retry loop. Without it, ADB
-  is off after every reboot until you open the app again.
-- **Home guard** (`homeguard_on`): an accessibility service that watches for a *system* launcher's
-  HOME activity coming to the front and switches back to the user-installed one — the DBOS launcher
-  grabs focus at boot and after some of its own pages close. The target is resolved dynamically
-  (the first non-system HOME candidate), never hardcoded, and only the stock launcher's main HOME
-  activity is corrected; its own secondary pages (the built-in app market and friends) are allowed.
-  Needs the accessibility grant below.
-- **Volume native single-steps** (`finevol_on`): DBOS handles volume keys *below* the accessibility
-  layer — `interceptKeyBeforeQueueing` → `dispatchDirectAudioEvent` → `AudioService` steps the
-  volume before any key filter can see it. But the ×5 step turned out to be a ROM branch, not a
-  hardwired behavior: `AudioService.adjustSuggestedStreamVolume` reads
-  `persist.vendor.brand.simple` (factory value 10) and multiplies the step by 5 whenever it is
-  not 1. Setting the property to 1 — a one-time `setprop` that survives reboots, done by Scout
-  over its local ADB channel — makes the volume keys natively step ±1 with no correction hack
-  at all. The accessibility service then only *observes* the keys and shows the exact value
-  (`音量 32/100`) in a self-drawn overlay: the stock OSD's scale is the internal value ÷ 5 and
-  cannot show the single steps.
-- **Stock volume-OSD suppression** (`volosd_on`): the stock `VolumeDialog` is registered by the
-  XGIMI SystemUI as the system `IVolumeController`. Scout un-registers it —
-  `service call audio 92` is `IAudioService.setVolumeController(null)`, the transaction code read
-  from this very firmware's `IAudioService$Stub` — over the local ADB channel, where the shell
-  holds `STATUS_BAR_SERVICE`. SystemUI re-registers on every *boot*, so Scout re-checks the
-  controller every 5 minutes and cuts it again. **Getting the stock bar back is the one thing a
-  switch cannot do**: the XGIMI SystemUI, once force-stopped, restarts but does *not* re-register
-  its controller (tested), so the reliable path back to the stock OSD is a device reboot. The
-  checks read the controller via the local ADB channel — the app's own uid gets an empty
-  `dumpsys audio` under this ROM's SELinux policy.
-- **better-audio presets** (`volcurve`, v18): on top of the native ±1 steps, a level↔internal-value
-  mapping so the remote's steps can be perceptually even. Switching presets re-maps the level
-  only (`levelFor` on the unchanged internal value) — the loudness you hear does not jump.
-  Presets: `stock` (factory: ±5, stock OSD, nothing else), `fine100` (100 steps 1:1 — the default,
-  zero correction), `step30` (30 linear steps, ±3–4 internal per press), `perceptual` (40 steps on
-  a quadratic curve pinned at f(1)=1 and f(40)=100: exactly one internal value per step at the
-  quiet end — the finest granularity the 0–100 internal scale allows — growing to ~6 at the top).
-  All presets keep ≥20 steps (the stock bar itself shows 20), and the curve math requires strict
-  monotonicity so no two levels map to the same internal value. Remote: ←/→ in the app's
-  better-audio row; WebUI: the preset buttons. `/reset` restores Scout's defaults,
-  `volcurve=stock` restores the factory behavior (OSD registration back after one reboot).
-- **Long-press volume fix** (v18): on a held volume key the repeat-key events do not reliably
-  reach the accessibility layer, so the overlay used to freeze at the first value. During any
-  keypress window the service now polls the internal volume every 120 ms, re-snaps to the curve
-  and refreshes the overlay; the poll self-stops 900 ms after the last key event.
-- **logd** (`logd_on`, v18, default off): this ROM ships logd stopped — `logcat` is black. With
-  the switch on, Scout's 5-minute check also runs `setprop ctl.start logd` over the local ADB
-  channel whenever logd is not running. Off means factory behavior: no logd, no logs.
-- **Night-gain** (`nightgain_on`): even 1/100 can be too loud at night, and below 1 there is only
-  mute. Scout attaches a `DynamicsProcessing` effect to the global output mix (session 0) and
-  attenuates by 18/12/6 dB while the volume sits at 1/2/3, giving the bottom three steps a
-  second, quieter half-step each. If the effect cannot attach (conflict with the Dolby chain,
-  missing effect library) the feature degrades to no attenuation and normal volume behavior.
-- **Announce** (`announce_on`): the UDP broadcasts above.
-- **Bridge activity**: DBOS resolves no standard Android Settings intents, so any third-party
-  launcher's Settings button dies with "Can't open that here". Scout registers a transparent
-  activity for the standard intents and forwards them to Dangbei's real screens (settings →
-  `com.dangbei.lerad.etna/.MainActivity`, the HDMI source picker → `com.xgimi.xhplayer/.InputActivity`
-  on the X9 Pro). Extend the table in `BridgeActivity.java` for other models.
-
-## Permissions to grant once (optional, for the guards)
-
-```
-adb shell settings put secure enabled_accessibility_services com.dbos.scout/.HomeGuardService
-adb shell settings put secure accessibility_enabled 1
-adb shell pm grant com.dbos.scout android.permission.WRITE_SECURE_SETTINGS
-```
-
-The last one lets Scout repair its own accessibility grant if the ROM clears it. All three are
-optional: without them Scout still starts adbd and answers HTTP.
+| `/adbstart` | `setprop ctl.start adbd` on demand |
+| `/homeguard` | Guard repair / off |
+| `/homefix` | Run the boot-launch fallback now |
+| `/sh?c=<command>` | Run a shell command, return output |
+| `/reset` | Restore Pilot's default configuration |
 
 ## Build
 
 ```
-python3 examples/dangbei-x9-pro/scout/build.py
+python3 examples/dangbei-x9-pro/pilot/build.py
 ```
 
-Needs the Android SDK: build-tools 34 or newer and the android-34 (or 35) platform jar; override
-with SCOUT_BT and SCOUT_PLATFORM. No Gradle, no dependencies: aapt2, javac, d8, zipalign and
-apksigner, mirroring the repo's reference-launcher philosophy of staying small. The output lands in
-`out/` beside the script and in `dist/`. A missing out/debug.keystore is generated on the fly;
-installing over a copy signed with a different key needs an uninstall first.
+Needs the Android SDK: build-tools 34+ and the android-34/35 platform jar; override with
+SCOUT_BT and SCOUT_PLATFORM. No Gradle, no dependencies: aapt2, javac, d8, zipalign, apksigner.
+Output lands in `out/` and `dist/`. A missing debug.keystore is generated on the fly; installing
+over a copy signed with a different key needs an uninstall first.
 
 ## Safety notes
 
-- The HTTP console listens on `0.0.0.0:8765` with a token gate on action routes. That is a remote
-  shell on your TV. On a trusted LAN, behind a firewall, this is the point; on a hostile network
-  it is a hole. Turn the service off (`/config`, or the app panel) when you do not need it.
-- `ro.adb.secure=0` means no auth handshake for ADB — that is the firmware's doing, not Scout's.
-- Scout never disables, uninstalls or hides anything by itself. It is transport and guard only;
+- The HTTP console is a remote shell on your TV, token-gated. On a trusted LAN that is the
+  point; on a hostile network it is a hole. Turn what you do not need off.
+- `ro.adb.secure=0` means no auth handshake for ADB — the firmware's doing, not Pilot's.
+- Pilot never disables, uninstalls or hides anything by itself. It is transport and guard only;
   what you take off the TV is between you and [the lists](../../README.md).
+- This software is for learning purposes only; please remove it within 24 hours.
