@@ -419,7 +419,7 @@ class Status(
 
 @Composable
 fun rememberStatus(): Status {
-    var status by remember { mutableStateOf(Status("-", false, false, false, BetterAudio.FINE100, false)) }
+    var status by remember { mutableStateOf(Status("-", false, false, false, BetterAudio.PERCEPTUAL, false)) }
     LaunchedEffect(Unit) {
         while (true) {
             val s = withContext(Dispatchers.Default) {
@@ -431,7 +431,7 @@ fun rememberStatus(): Status {
                     guard = HomeGuardService.connected,
                     shell = "running".equals(PilotService.adbdState),
                     otaBlocked = "stopped".equals(eng),
-                    curve = Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.FINE100),
+                    curve = Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL),
                     adbdOn = Config.get(ctx, Config.Key.ADBD),
                 )
             }

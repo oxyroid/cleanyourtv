@@ -60,6 +60,14 @@ public class HomeGuardService extends AccessibilityService {
         instance = this;
         status = "connected";
         Log.i(TAG, "HomeGuard connected");
+        // The XML declares canRequestFilterKeyEvents; the flag itself must
+        // be armed at runtime or no key copies ever reach onKeyEvent.
+        try {
+            android.accessibilityservice.AccessibilityServiceInfo info = getServiceInfo();
+            info.flags |= android.accessibilityservice.AccessibilityServiceInfo
+                    .FLAG_REQUEST_FILTER_KEY_EVENTS;
+            setServiceInfo(info);
+        } catch (Throwable ignored) {}
         h.postDelayed(periodic, 3000);
     }
 
@@ -100,15 +108,15 @@ public class HomeGuardService extends AccessibilityService {
             else if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) dir = -1;
             else return false;
             if (!Config.get(this, Config.Key.FINEVOL)) return false;
-            final BetterAudio.Preset p = BetterAudio.get(
-                    Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100));
-            if (BetterAudio.STOCK.equals(p.name)) return false;
-            int shown = VolCurve.shownValue();
-            if (shown < 0) return false;           // nothing landed yet: let the broadcast lead
-            int level = BetterAudio.levelFor(shown, p) + dir;
-            if (level < 0) level = 0;
-            if (level > p.steps) level = p.steps;
-            showVolume(this, level, BetterAudio.internalFor(level, p), p);
+            if (!BetterAudio.isOn(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)))
+                return false;
+            if (VolCurve.shownValue() < 0) return false;   // nothing landed yet: let the broadcast lead
+            int[] pl = VolCurve.predict(dir);
+            showVolume(this, pl[0], pl[1],
+                    BetterAudio.get(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)));
+            // The key copy also kicks the 100 ms consume-poll: corrections
+            // settle in ~0.1 s instead of at broadcast pace (~0.5 s here).
+            VolCurve.kick(this, dir);
         } catch (Throwable ignored) {}
         return false;                               // never intercept
     }
@@ -130,18 +138,16 @@ public class HomeGuardService extends AccessibilityService {
     static void showVolume(Context ctx, int level, int internal, BetterAudio.Preset p) {
         HomeGuardService svc = instance;
         if (svc != null && connected) {
-            svc.showVolInner(level, internal, p);
+            svc.showVolInner(level, p);
         } else {
             try {
-                String txt = (internal == level)
-                        ? ctx.getString(R.string.vol_line, level, p.steps)
-                        : ctx.getString(R.string.vol_line_detail, level, p.steps, internal);
+                String txt = ctx.getString(R.string.vol_line, level, p.steps);
                 android.widget.Toast.makeText(ctx, txt, android.widget.Toast.LENGTH_SHORT).show();
             } catch (Throwable ignored) {}
         }
     }
 
-    private void showVolInner(int level, int internal, BetterAudio.Preset p) {
+    private void showVolInner(int level, BetterAudio.Preset p) {
         try {
             if (volView == null) {
                 volView = new android.widget.TextView(this);
@@ -154,13 +160,9 @@ public class HomeGuardService extends AccessibilityService {
                 volView.setBackground(bg);
                 volView.setPadding(dp(18), dp(10), dp(18), dp(10));
             }
-            String txt;
-            if (internal == level) {
-                txt = getString(R.string.vol_line, level, p.steps);
-            } else {
-                txt = getString(R.string.vol_line_detail, level, p.steps, internal);
-            }
-            volView.setText(txt);
+            // One number only: the perceptual level. The internal index and
+            // master stage are rendering details, never user-facing.
+            volView.setText(getString(R.string.vol_line, level, p.steps));
             if (!volViewAdded) {
                 android.view.WindowManager.LayoutParams lp =
                         new android.view.WindowManager.LayoutParams(

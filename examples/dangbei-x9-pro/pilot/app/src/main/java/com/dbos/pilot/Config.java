@@ -21,7 +21,6 @@ public final class Config {
         String ANNOUNCE   = "announce_on";   // UDP presence broadcast
         String FINEVOL    = "finevol_on";    // volume keys: overlay + curve correction
         String VOLOSD     = "volosd_on";     // suppress the stock volume bar
-        String NIGHTGAIN = "nightgain_on";  // DynamicsProcessing attenuation at vol 1-3
         String LOGD       = "logd_on";       // keep the system log daemon running
         String OTABLOCK   = "ota_block_on";  // keep the system update engine stopped
         String VOLCURVE   = "volcurve";      // better-audio preset (string)
@@ -63,10 +62,9 @@ public final class Config {
     }
 
     /**
-     * Apply a better-audio preset: store the name and derive the three
-     * low-level switches. The preset is the single recommended entry point;
-     * the low-level switches stay available for fine-tuning. Re-selecting a
-     * preset restores that preset's full defaults.
+     * Apply a better-audio preset: store the name and derive the low-level
+     * switches. The UI is a single switch (perceptual on/off); the switches
+     * stay in the store for the WebUI/API. Re-selecting restores defaults.
      */
     public static void applyPreset(Context c, String name) {
         BetterAudio.Preset p = BetterAudio.get(name);
@@ -74,7 +72,6 @@ public final class Config {
         boolean stock = BetterAudio.STOCK.equals(p.name);
         set(c, Key.FINEVOL, !stock);
         set(c, Key.VOLOSD, p.overrideOsd);
-        set(c, Key.NIGHTGAIN, p.nightDp);
     }
 
     /** Restore Pilot's default configuration (all switches and presets). */
@@ -83,7 +80,7 @@ public final class Config {
         android.util.Log.i(PilotService.TAG, "config reset to defaults");
     }
 
-    /** JSON view: {"homeguard_on":true,...,"volcurve":"fine100","home_target":"auto"} */
+    /** JSON view: {"homeguard_on":true,...,"volcurve":"perceptual","home_target":"auto"} */
     public static String toJson(Context c) {
         return "{\"" + Key.HOMEGUARD + "\":" + get(c, Key.HOMEGUARD)
              + ",\"" + Key.HOMEFIX + "\":" + get(c, Key.HOMEFIX)
@@ -91,10 +88,9 @@ public final class Config {
              + ",\"" + Key.ANNOUNCE + "\":" + get(c, Key.ANNOUNCE)
              + ",\"" + Key.FINEVOL + "\":" + get(c, Key.FINEVOL)
              + ",\"" + Key.VOLOSD + "\":" + get(c, Key.VOLOSD)
-             + ",\"" + Key.NIGHTGAIN + "\":" + get(c, Key.NIGHTGAIN)
              + ",\"" + Key.LOGD + "\":" + get(c, Key.LOGD)
              + ",\"" + Key.OTABLOCK + "\":" + get(c, Key.OTABLOCK)
-             + ",\"" + Key.VOLCURVE + "\":" + PilotService.js(getStr(c, Key.VOLCURVE, BetterAudio.FINE100))
+             + ",\"" + Key.VOLCURVE + "\":" + PilotService.js(getStr(c, Key.VOLCURVE, BetterAudio.PERCEPTUAL))
              + ",\"" + Key.HOMETARGET + "\":" + PilotService.js(getStr(c, Key.HOMETARGET, "auto")) + "}";
     }
 }

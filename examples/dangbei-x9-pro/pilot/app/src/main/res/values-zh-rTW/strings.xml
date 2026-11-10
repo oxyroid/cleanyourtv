@@ -22,8 +22,8 @@
     <string name="rec_title">套用推薦設定？</string>
     <string name="rec_will">將會變更：</string>
     <string name="rec_keeps">已是推薦狀態（保持不變）：</string>
-    <string name="rec_vol">· 音量曲線 → 感知（40 階）</string>
-    <string name="rec_vol_already">· 音量曲線：感知</string>
+    <string name="rec_vol">· 感知音量 → 開（100 階）</string>
+    <string name="rec_vol_already">· 感知音量：開</string>
     <string name="rec_guard">· 桌面守護 → 開</string>
     <string name="rec_guard_already">· 桌面守護：開</string>
     <string name="rec_boot">· 開機進我的桌面 → 開</string>
@@ -41,14 +41,13 @@
     <string name="grant_fail">✗ 授權失敗</string>
     <string name="repair_ok">✓ 守護已修復。</string>
     <string name="repair_wait">修復進行中——請看狀態行。</string>
-    <string name="restore_done">✓ 已復原原廠音量（重啟後原廠音量條回歸）。</string>
-    <string name="reset_confirm">一切恢復 Pilot 預設值：曲線→fine100、logd 關、遮蔽更新開。繼續？</string>
+    <string name="reset_confirm">所有設定恢復 Pilot 預設：感知音量開、桌面守護開、開機糾偏開、logd 關、OTA 屏蔽開。繼續？</string>
     <string name="reset_done">✓ 已重設全部設定。</string>
 
     <string name="screen_guard">桌面守護</string>
     <string name="screen_guard_s">桌面防守 · 權限 · 桌面選擇</string>
     <string name="screen_audio">聲音</string>
-    <string name="screen_audio_s">音量曲線 · 夜間增益</string>
+    <string name="screen_audio_s">感知音量 · 單一開關</string>
     <string name="screen_maintenance">遠端與維護</string>
     <string name="screen_maintenance_s">ADB · logd · 更新遮蔽</string>
     <string name="screen_about">關於</string>
@@ -63,19 +62,11 @@
     <string name="t_ota">遮蔽系統更新</string>
     <string name="s_ota">保持升級守護停止；關閉即恢復系統更新</string>
 
-    <string name="t_curve">音量曲線</string>
-    <string name="s_curve_stock">原廠行為：±5 步進、原廠音量條、無浮層、無夜間增益</string>
-    <string name="s_curve_fine100">100 階 1:1；浮層顯示精確值</string>
-    <string name="s_curve_step30">30 階，每按 ±3~4 內部值</string>
-    <string name="s_curve_perceptual">40 階感知曲線；低音段每階恰 1 內部值</string>
-    <string name="t_finevol">音量鍵</string>
-    <string name="s_finevol">精確讀數浮層與曲線校正依賴此選項</string>
-    <string name="t_volosd">隱藏原廠音量條</string>
-    <string name="s_volosd">浮層接管顯示；原廠條需重啟一次才回來</string>
-    <string name="t_nightgain">夜間微音量</string>
-    <string name="s_nightgain">1-3 檔額外衰減 18/12/6 dB</string>
-    <string name="t_restore_stock">復原原廠音量</string>
-    <string name="s_restore_stock">±5 步進與原廠音量條（重啟一次後生效）</string>
+    <string name="t_perc_vol">感知音量</string>
+    <string name="s_perc_on">100 階均勻步進（每階約 0.8 dB），底端 −80 dB；音量鍵走 Pilot 浮層</string>
+    <string name="s_perc_off">原廠行為：±5 步進與原廠音量條</string>
+    <string name="s_perc_curve_on">曲線：−80 → 0 dB 均分 100 階，每階約等於一個可辨差（JND）。1-34 階低於原廠 −59 dB 的地板，由 AudioFlinger 主音量補足；1 階比原廠最低音量安靜約 4 倍。</string>
+    <string name="s_perc_curve_off">關閉即恢復原廠音量（原廠音量條需重啟一次回來）。曲線依據人耳響度感知：每 +10 dB 感知響度翻倍，均勻的 dB 階梯才是聽起來均勻的階梯。</string>
 
     <string name="t_homeguard">桌面守護</string>
     <string name="s_homeguard">原廠桌面佔據畫面時自動切回</string>
@@ -100,19 +91,6 @@
     <string name="about_legal">僅供學習目的。請在 24 小時內自行刪除。</string>
 
     <string name="vol_line">音量 %1$d/%2$d</string>
-    <string name="vol_line_detail">音量 %1$d/%2$d（%3$d/100）</string>
     <string name="notif_text">主控台 :%1$d · 探索 :%2$d</string>
 
-    <string-array name="curve_entries">
-        <item>stock — 原廠（±5、原廠條）</item>
-        <item>fine100 — 100 階 1:1（預設）</item>
-        <item>step30 — 30 階，每按 ±3~4</item>
-        <item>perceptual — 40 階感知，低音段最細</item>
-    </string-array>
-    <string-array name="curve_values">
-        <item>stock</item>
-        <item>fine100</item>
-        <item>step30</item>
-        <item>perceptual</item>
-    </string-array>
 </resources>

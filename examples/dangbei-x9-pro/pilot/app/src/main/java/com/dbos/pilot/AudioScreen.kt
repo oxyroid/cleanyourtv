@@ -1,26 +1,32 @@
 package com.dbos.pilot
 
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
- * Sound screen: the better-audio preset radio (primary entry — it derives
- * the low-level switches), the switches for fine-tuning, and the one-tap
- * factory restore. The ±1 grid and the stock-bar cut go through the shell
- * channel, so while adbd is down these rows grey out with the dependency.
+ * Sound screen: one switch. Perceptual volume on = the Pilot overlay + a
+ * 100-level, even-dB curve (0.8 dB/step, floor at −80 dB via the AudioFlinger
+ * master-volume stage); off = factory behavior. Turning it on needs the
+ * shell channel (native ±1 steps, stock-bar cut, master writes), so the row
+ * greys out with the dependency while adbd is down.
  */
 @Composable
 fun AudioScreen() {
     val ctx = LocalContext.current
-    val ui = LocalPilotUi.current
     val st = rememberStatus()
     val shellLive = st.shell
     val depAdbd = stringResource(R.string.dep_adbd)
@@ -29,56 +35,31 @@ fun AudioScreen() {
     fun refresh() { rev++ }
 
     val grabber = rememberFocusGrabber()
-
-    fun curveTitle(name: String, cur: String): String {
-        val base = ctx.getString(R.string.t_curve) + " · " + name
-        // " *" marks the user having moved the curve off its default.
-        return if (name == cur && !BetterAudio.FINE100.equals(cur)) base + " *" else base
+    val cs = androidx.tv.material3.MaterialTheme.colorScheme
+    // remember(rev) reads rev, so refresh() (rev++) really recomposes.
+    val curveOn = remember(rev) {
+        BetterAudio.isOn(Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL))
     }
-
-    val curveSummaries = mapOf(
-        BetterAudio.STOCK to R.string.s_curve_stock,
-        BetterAudio.FINE100 to R.string.s_curve_fine100,
-        BetterAudio.STEP30 to R.string.s_curve_step30,
-        BetterAudio.PERCEPTUAL to R.string.s_curve_perceptual,
-    )
 
     Page(
         title = stringResource(R.string.screen_audio),
         subtitle = stringResource(R.string.screen_audio_s),
         grabber = grabber,
     ) {
-        items(BetterAudio.PRESETS.size) { idx ->
-            val name = BetterAudio.PRESETS[idx]
-            val cur = Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.FINE100)
+        item {
             RowCard(
                 modifier = Modifier.focusGrabber(grabber),
-                title = curveTitle(name, cur),
-                summary = ctx.getString(curveSummaries[name] ?: R.string.s_curve_fine100),
-                state = name == cur,
-                enabled = shellLive || name == cur,
-                onClick = {
-                    Config.applyPreset(ctx, name)
-                    ctx.sendService(PilotService.ACT_APPLY_VOLUME)
-                    refresh()
+                title = marked(ctx, R.string.t_perc_vol,
+                    Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL) != BetterAudio.PERCEPTUAL),
+                summary = when {
+                    !shellLive -> depAdbd
+                    curveOn -> stringResource(R.string.s_perc_on)
+                    else -> stringResource(R.string.s_perc_off)
                 },
-            )
-        }
-
-        items(
-            listOf(
-                Triple(Config.Key.FINEVOL, R.string.t_finevol, R.string.s_finevol),
-                Triple(Config.Key.VOLOSD, R.string.t_volosd, R.string.s_volosd),
-                Triple(Config.Key.NIGHTGAIN, R.string.t_nightgain, R.string.s_nightgain),
-            )
-        ) { (key, tRes, sRes) ->
-            RowCard(
-                title = marked(ctx, tRes, Config.changedFromDefault(ctx, key)),
-                summary = if (shellLive) ctx.getString(sRes) else depAdbd,
-                state = Config.get(ctx, key),
+                state = curveOn,
                 enabled = shellLive,
                 onClick = {
-                    Config.set(ctx, key, !Config.get(ctx, key))
+                    Config.applyPreset(ctx, if (curveOn) BetterAudio.STOCK else BetterAudio.PERCEPTUAL)
                     ctx.sendService(PilotService.ACT_APPLY_VOLUME)
                     refresh()
                 },
@@ -86,16 +67,11 @@ fun AudioScreen() {
         }
 
         item {
-            RowCard(
-                title = stringResource(R.string.t_restore_stock),
-                summary = if (shellLive) stringResource(R.string.s_restore_stock) else depAdbd,
-                enabled = shellLive,
-                onClick = {
-                    Config.applyPreset(ctx, BetterAudio.STOCK)
-                    ctx.sendService(PilotService.ACT_APPLY_VOLUME)
-                    ui.popup(ctx.getString(R.string.restore_done), 2600)
-                    refresh()
-                },
+            Spacer(Modifier.height(6.dp))
+            BasicText(
+                if (curveOn) stringResource(R.string.s_perc_curve_on) else stringResource(R.string.s_perc_curve_off),
+                style = TextStyle(color = cs.onSurfaceVariant, fontSize = 14.sp, lineHeight = 20.sp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
             )
         }
     }

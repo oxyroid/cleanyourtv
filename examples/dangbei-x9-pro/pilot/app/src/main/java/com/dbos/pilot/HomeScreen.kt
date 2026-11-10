@@ -149,7 +149,7 @@ private fun askRecommend(
 ) {
     val change = StringBuilder()
     val keep = StringBuilder()
-    val curve = Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.FINE100)
+    val curve = Config.getStr(ctx, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)
     if (!BetterAudio.PERCEPTUAL.equals(curve)) change.append(ctx.getString(R.string.rec_vol)).append('\n')
     else keep.append(ctx.getString(R.string.rec_vol_already)).append('\n')
     if (!Config.get(ctx, Config.Key.HOMEGUARD)) change.append(ctx.getString(R.string.rec_guard)).append('\n')

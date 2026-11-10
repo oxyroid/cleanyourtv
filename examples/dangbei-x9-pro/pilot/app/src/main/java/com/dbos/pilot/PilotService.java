@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit;
  *        92 on this firmware),
  *      · logd up when the user opted in (the ROM ships it stopped),
  *      · the A/B update engine stopped when OTA blocking is on,
- *      · night-gain effect re-attached.
+ *      · the perceptual curve's master-volume stage re-pinned.
  *    Everything needing a shell identity goes through LocalAdb.
  */
 public class PilotService extends Service {
@@ -71,7 +71,7 @@ public class PilotService extends Service {
     public static volatile String volNativeState = "init";
     public static volatile String otaState = "init";
 
-    /** The live service instance (VolCurve's night-gain recheck uses it). */
+    /** The live service instance (the settings UI reads config through it). */
     static volatile PilotService instance;
 
     private ExecutorService pool;
@@ -128,11 +128,10 @@ public class PilotService extends Service {
                 }
             });
         }
-        // Maintenance: volume chain, logd, OTA block, night gain.
+        // Maintenance: volume chain, logd, OTA block, master-volume re-pin.
         pool.execute(new Runnable() {
             @Override public void run() { maintainLoop(0); }
         });
-        applyNightGain(this);
     }
 
     @Override
@@ -297,8 +296,10 @@ public class PilotService extends Service {
                 }
             }
 
-            // 5) night gain refresh (effect may be lost on service restart)
-            applyNightGain(this);
+            // 5) master-volume re-pin: heals the audioserver resetting the
+            //    master stage to 1.0 behind our back (restart), and restores
+            //    the saved level's rendering after a reboot.
+            VolCurve.repin(this, true);
         } catch (Throwable t) {
             volNativeState = "maintain err: " + t;
         }
@@ -312,48 +313,8 @@ public class PilotService extends Service {
     }
 
     // ---------------- night gain ----------------
-    //
-    // Even 1/100 can be too loud at night, and below 1 there is only mute —
-    // the internal scale has no room between them. DynamicsProcessing on the
-    // global output mix (session 0) attenuates 18/12/6 dB while the volume
-    // sits at 1/2/3, giving the bottom three steps a quieter half-step each.
-    // If the effect cannot attach (Dolby chain conflict, missing library) the
-    // feature degrades to no attenuation, never to broken audio.
-
-    private static android.media.audiofx.DynamicsProcessing dpEffect;
-    private static float dpGain = 1.0f;
-    private static boolean dpFailed = false;
-
-    /** Idempotent: current volume + switch → the DP input gain. */
-    static synchronized void applyNightGain(Context ctx) {
-        try {
-            android.media.AudioManager am = (android.media.AudioManager)
-                    ctx.getSystemService(Context.AUDIO_SERVICE);
-            int vol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-            float db = 0f;
-            if (Config.get(ctx, Config.Key.NIGHTGAIN)) {
-                if (vol == 1) db = -18f;
-                else if (vol == 2) db = -12f;
-                else if (vol == 3) db = -6f;
-            }
-            float gain = (float) Math.pow(10, db / 20);
-            if (dpFailed && db == 0f) return;
-            if (dpEffect == null) {
-                if (db == 0f) return;   // no demand, keep the output chain clean
-                try {
-                    dpEffect = new android.media.audiofx.DynamicsProcessing(0);
-                } catch (Throwable t) {
-                    dpFailed = true;
-                    volNativeState = "nightgain unavailable: " + t;
-                    return;
-                }
-            }
-            if (gain != dpGain) {
-                dpEffect.setInputGainAllChannelsTo(gain);
-                dpGain = gain;
-            }
-        } catch (Throwable ignored) {}
-    }
+    // (removed with the preset radio: the perceptual curve's master-volume
+    // stage covers the sub-floor range — see BetterAudio / VolCurve)
 
     // ---------------- boot home fix (fallback layer) ----------------
 
@@ -648,7 +609,7 @@ public class PilotService extends Service {
             for (String k : new String[] {
                     Config.Key.HOMEGUARD, Config.Key.HOMEFIX, Config.Key.ADBD,
                     Config.Key.ANNOUNCE, Config.Key.FINEVOL, Config.Key.VOLOSD,
-                    Config.Key.NIGHTGAIN, Config.Key.LOGD, Config.Key.OTABLOCK}) {
+                    Config.Key.LOGD, Config.Key.OTABLOCK}) {
                 if (p.containsKey(k))
                     Config.set(this, k, !"0".equals(p.get(k)));
             }
@@ -669,8 +630,6 @@ public class PilotService extends Service {
                     @Override public void run() { maintainLoop(6); }
                 });
             }
-            if (p.containsKey(Config.Key.NIGHTGAIN) || p.containsKey(Config.Key.OTABLOCK))
-                applyNightGain(this);
             return Config.toJson(this);
         }
         if ("/reset".equals(path)) {
@@ -678,7 +637,6 @@ public class PilotService extends Service {
             pool.execute(new Runnable() {
                 @Override public void run() { maintainLoop(6); }
             });
-            applyNightGain(this);
             return Config.toJson(this);
         }
         if ("/vol".equals(path)) {
@@ -695,7 +653,6 @@ public class PilotService extends Service {
                 if (next < 0) next = 0;
                 if (next > max) next = max;
                 am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, next, 0);
-                applyNightGain(this);
                 cur = next;
             }
             return "{\"vol\":" + cur + ",\"max\":"
@@ -757,9 +714,9 @@ public class PilotService extends Service {
         r.append(",\"guardTarget\":").append(js(HomeGuardService.target));
         r.append(",\"volNative\":").append(js(volNativeState));
         r.append(",\"brandSimple\":").append(js(sh("getprop persist.vendor.brand.simple").trim()));
-        r.append(",\"volCurve\":").append(js(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100)));
+        r.append(",\"volCurve\":").append(js(Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)));
         r.append(",\"curveSteps\":").append(BetterAudio.get(
-                Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.FINE100)).steps);
+                Config.getStr(this, Config.Key.VOLCURVE, BetterAudio.PERCEPTUAL)).steps);
         r.append(",\"homeTarget\":").append(js(Config.getStr(this, Config.Key.HOMETARGET, HomeLauncher.AUTO)));
         r.append(",\"logd\":").append(js(sh("getprop init.svc.logd").trim()));
         r.append(",\"ota\":").append(js(otaState));

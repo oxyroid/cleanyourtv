@@ -22,8 +22,8 @@
     <string name="rec_title">Apply recommended setup?</string>
     <string name="rec_will">Will change:</string>
     <string name="rec_keeps">Already as recommended (unchanged):</string>
-    <string name="rec_vol">· Volume curve → perceptual (40 steps)</string>
-    <string name="rec_vol_already">· Volume curve: perceptual</string>
+    <string name="rec_vol">· Perceptual volume → on (100 steps)</string>
+    <string name="rec_vol_already">· Perceptual volume: on</string>
     <string name="rec_guard">· Home guard → on</string>
     <string name="rec_guard_already">· Home guard: on</string>
     <string name="rec_boot">· Launch my launcher at boot → on</string>
@@ -41,14 +41,13 @@
     <string name="grant_fail">✗ Grant failed</string>
     <string name="repair_ok">✓ Guard repaired.</string>
     <string name="repair_wait">Repair still in progress — check the status line.</string>
-    <string name="restore_done">✓ Stock volume restored (bar returns after a reboot).</string>
-    <string name="reset_confirm">Everything goes back to Pilot defaults: perceptual→fine100, home guard stays on if you chose it, logd off, OTA block on. Continue?</string>
+    <string name="reset_confirm">Everything goes back to Pilot defaults: perceptual volume on, home guard on, boot launcher fix on, logd off, OTA block on. Continue?</string>
     <string name="reset_done">✓ All settings reset.</string>
 
     <string name="screen_guard">Home guard</string>
     <string name="screen_guard_s">Desktop defense · permissions · launcher</string>
     <string name="screen_audio">Sound</string>
-    <string name="screen_audio_s">Volume curve · night gain</string>
+    <string name="screen_audio_s">Perceptual volume · one switch</string>
     <string name="screen_maintenance">Remote &amp; maintenance</string>
     <string name="screen_maintenance_s">ADB · logd · update block</string>
     <string name="screen_about">About</string>
@@ -63,19 +62,11 @@
     <string name="t_ota">Block system updates</string>
     <string name="s_ota">Keeps the system update engine stopped; off restores system updates</string>
 
-    <string name="t_curve">Volume curve</string>
-    <string name="s_curve_stock">Factory behavior: ±5 steps, stock volume bar, no overlay, no night gain</string>
-    <string name="s_curve_fine100">100 steps 1:1; the overlay shows the exact value</string>
-    <string name="s_curve_step30">30 steps, ±3–4 internal per press</string>
-    <string name="s_curve_perceptual">40-step perceptual curve; one internal value per step at the quiet end</string>
-    <string name="t_finevol">Volume keys</string>
-    <string name="s_finevol">The exact-value overlay and curve correction depend on this</string>
-    <string name="t_volosd">Hide stock volume bar</string>
-    <string name="s_volosd">The overlay takes over; the stock bar needs one reboot to come back</string>
-    <string name="t_nightgain">Night gain</string>
-    <string name="s_nightgain">Steps 1–3 get −18/−12/−6 dB extra attenuation</string>
-    <string name="t_restore_stock">Restore stock volume</string>
-    <string name="s_restore_stock">±5 steps and the stock bar (after one reboot)</string>
+    <string name="t_perc_vol">Perceptual volume</string>
+    <string name="s_perc_on">100 even steps (≈0.8 dB each) down to −80 dB; volume keys show the Pilot overlay</string>
+    <string name="s_perc_off">Factory behavior: ±5 steps and the stock volume bar</string>
+    <string name="s_perc_curve_on">Curve: −80 → 0 dB over 100 steps, each ≈ the just-noticeable difference. Levels 1–34 run below the stock floor of −59 dB through the AudioFlinger master-volume stage; level 1 is about 4× quieter than the stock minimum.</string>
+    <string name="s_perc_curve_off">Off restores factory volume (the stock bar needs one reboot to come back). The curve follows human loudness perception: perceived loudness doubles per +10 dB, so an even-dB ladder is the even-sounding one.</string>
 
     <string name="t_homeguard">Home guard</string>
     <string name="s_homeguard">Switches back when the stock launcher takes the screen</string>
@@ -100,20 +91,7 @@
     <string name="about_legal">For learning purposes only. Please remove within 24 hours.</string>
 
     <string name="vol_line">Volume %1$d/%2$d</string>
-    <string name="vol_line_detail">Volume %1$d/%2$d (%3$d/100)</string>
     <string name="notif_title" translatable="false">DBOS Pilot</string>
     <string name="notif_text">Console :%1$d · Discover :%2$d</string>
 
-    <string-array name="curve_entries">
-        <item>stock — factory (±5, stock bar)</item>
-        <item>fine100 — 100 steps, 1:1 (default)</item>
-        <item>step30 — 30 steps, ±3–4 per press</item>
-        <item>perceptual — 40 steps, finest at the quiet end</item>
-    </string-array>
-    <string-array name="curve_values">
-        <item>stock</item>
-        <item>fine100</item>
-        <item>step30</item>
-        <item>perceptual</item>
-    </string-array>
 </resources>
