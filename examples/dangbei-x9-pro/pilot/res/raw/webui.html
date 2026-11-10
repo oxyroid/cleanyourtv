@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DBOS Pilot 应急控制台</title>
+<style>
+  :root { --bg:#0f1115; --card:#1a1e26; --line:#2a3040; --txt:#dfe6f0; --dim:#8b93a5; --ok:#3fb96b; --warn:#e8a33d; --bad:#e05b5b; --acc:#4a9eff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; padding:20px; max-width:680px; margin:0 auto; }
+  h1 { font-size:17px; margin-bottom:4px; display:flex; align-items:center; gap:10px; }
+  h1 .dot { width:10px; height:10px; border-radius:50%; background:var(--dim); }
+  h1 .dot.on { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  .sub { color:var(--dim); font-size:12px; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .card h2 { font-size:12px; color:var(--dim); font-weight:600; margin-bottom:10px; letter-spacing:.5px; text-transform:uppercase; }
+  .kv { display:flex; justify-content:space-between; padding:2px 0; font-size:13px; }
+  .kv b { font-weight:400; color:var(--dim); }
+  .kv span { font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+  .toggle { display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); cursor:pointer; }
+  .toggle:last-child { border-bottom:none; }
+  .toggle .desc { color:var(--dim); font-size:11px; }
+  .sw { position:relative; width:40px; height:22px; flex:none; }
+  .sw input { display:none; }
+  .sw i { position:absolute; inset:0; background:#333a48; border-radius:22px; transition:.2s; }
+  .sw i:after { content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:3px; left:3px; transition:.2s; }
+  .sw input:checked + i { background:var(--ok); }
+  .sw input:checked + i:after { left:21px; }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; }
+  button { background:#242b3a; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:8px 14px; cursor:pointer; font-size:13px; }
+  button:hover { border-color:var(--acc); color:var(--acc); }
+  button.cur { border-color:var(--acc); color:var(--acc); }
+  #shellbox { display:flex; gap:8px; }
+  #cmd { flex:1; background:#12151c; border:1px solid var(--line); border-radius:8px; color:var(--txt); padding:8px 12px; font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+  #out { background:#12151c; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:8px; font-family:ui-monospace,Menlo,monospace; font-size:12px; white-space:pre-wrap; max-height:220px; overflow:auto; color:#9fd0a0; display:none; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#2a3348; border:1px solid var(--line); border-radius:8px; padding:8px 18px; font-size:13px; opacity:0; transition:.3s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .st-ok { color:var(--ok); } .st-bad { color:var(--bad); } .st-dim { color:var(--dim); }
+</style>
+</head>
+<body>
+<h1><span class="dot" id="dot"></span> DBOS Pilot 应急控制台 <span id="ver" style="color:var(--dim);font-size:12px"></span></h1>
+<div class="sub">App 打不开时的兜底入口：状态 · 开关 · 应急按钮 · Shell。日常操作请用电视端「DBOS Pilot」面板。</div>
+
+<div class="card">
+  <h2>状态</h2>
+  <div class="kv"><b>IP</b><span id="m-ip">-</span></div>
+  <div class="kv"><b>ADB</b><span id="m-adbd">-</span></div>
+  <div class="kv"><b>桌面守护</b><span id="m-guard">-</span></div>
+  <div class="kv"><b>音量链</b><span id="m-vol" style="font-size:11px">-</span></div>
+  <div class="kv"><b>logd</b><span id="m-logd">-</span></div>
+  <div class="kv"><b>update engine</b><span id="m-ota">-</span></div>
+</div>
+
+<div class="card">
+  <h2>应急</h2>
+  <div class="btns">
+    <button onclick="api('/adbstart','已拉起 ADB')">拉起 ADB</button>
+    <button onclick="api('/homeguard','守护授权修复中')">修复守护</button>
+    <button onclick="api('/homeguard?action=off','守护授权已摘除')">关闭守护</button>
+    <button onclick="api('/homefix','桌面纠偏已触发')">桌面纠偏</button>
+    <button onclick="api('/reset','已重置为默认配置')">重置配置</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>开关</h2>
+  <label class="toggle"><div>桌面守护<div class="desc">原厂桌面冒头自动切回</div></div>
+    <span class="sw"><input type="checkbox" data-k="homeguard_on"><i></i></span></label>
+  <label class="toggle"><div>开机桌面纠偏<div class="desc">开机后拉起你的桌面</div></div>
+    <span class="sw"><input type="checkbox" data-k="homefix_on"><i></i></span></label>
+  <label class="toggle"><div>开机自启 ADB<div class="desc">远程管理依赖此选项</div></div>
+    <span class="sw"><input type="checkbox" data-k="adbd_on"><i></i></span></label>
+  <label class="toggle"><div>IP 广播<div class="desc">局域网发现依赖此选项</div></div>
+    <span class="sw"><input type="checkbox" data-k="announce_on"><i></i></span></label>
+  <label class="toggle"><div>logd<div class="desc">logcat 依赖此选项</div></div>
+    <span class="sw"><input type="checkbox" data-k="logd_on"><i></i></span></label>
+  <label class="toggle"><div>屏蔽系统更新<div class="desc">保持升级守护停止</div></div>
+    <span class="sw"><input type="checkbox" data-k="ota_block_on"><i></i></span></label>
+  <label class="toggle"><div>音量键<div class="desc">精确浮层与曲线校正</div></div>
+    <span class="sw"><input type="checkbox" data-k="finevol_on"><i></i></span></label>
+  <label class="toggle"><div>隐藏原厂音量条<div class="desc">浮层接管显示；恢复需重启</div></div>
+    <span class="sw"><input type="checkbox" data-k="volosd_on"><i></i></span></label>
+  <label class="toggle"><div>夜间微音量<div class="desc">1-3 档额外衰减 18/12/6 dB</div></div>
+    <span class="sw"><input type="checkbox" data-k="nightgain_on"><i></i></span></label>
+</div>
+
+<div class="card">
+  <h2>音量曲线</h2>
+  <div class="btns">
+    <button data-c="stock">stock</button>
+    <button data-c="fine100">fine100</button>
+    <button data-c="step30">step30</button>
+    <button data-c="perceptual">perceptual</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Shell</h2>
+  <div id="shellbox">
+    <input id="cmd" placeholder="如 dumpsys audio | grep mVolumeController" onkeydown="if(event.key==='Enter')runCmd()">
+    <button onclick="runCmd()">执行</button>
+  </div>
+  <div id="out"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const K = location.search.match(/k=([^&]+)/) ? location.search.match(/k=([^&]+)/)[1] : 'S9x7Kp2mQw4';
+const base = 'http://' + location.host;
+const q = (p) => base + p + (p.includes('?') ? '&' : '?') + 'k=' + K;
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+async function api(path, msg) {
+  try {
+    const r = await fetch(q(path));
+    const j = await r.json();
+    toast(msg || (j.error ? j.error : '已完成'));
+    refresh();
+  } catch (e) { toast('请求失败: ' + e); }
+}
+
+async function refresh() {
+  try {
+    const r = await fetch(q('/whoami'));
+    const d = await r.json();
+    document.getElementById('dot').className = 'dot on';
+    document.getElementById('ver').textContent = d.model + ' · ' + d.ver;
+    document.getElementById('m-ip').textContent = d.ips.join(', ');
+    const ad = document.getElementById('m-adbd');
+    ad.textContent = d.adbd + (d.adbPort ? ' :' + d.adbPort : '');
+    ad.className = d.adbd === 'running' ? 'st-ok' : 'st-bad';
+    const g = document.getElementById('m-guard');
+    g.textContent = d.guard ? '在线' : '离线';
+    g.className = d.guard ? 'st-ok' : 'st-bad';
+    document.getElementById('m-vol').textContent = d.volNative + ' · ' + d.volCurve + '(' + d.curveSteps + ')';
+    const lg = document.getElementById('m-logd');
+    lg.textContent = d.logd;
+    lg.className = d.logd === 'running' ? 'st-ok' : 'st-dim';
+    document.getElementById('m-ota').textContent = d.updateEngine;
+    document.querySelectorAll('[data-c]').forEach(b => b.classList.toggle('cur', b.dataset.c === d.volCurve));
+  } catch (e) {
+    document.getElementById('dot').className = 'dot';
+  }
+  try {
+    const r = await fetch(q('/config'));
+    const c = await r.json();
+    for (const k in c) {
+      const el = document.querySelector('[data-k=' + k + ']');
+      if (el) el.checked = c[k];
+    }
+  } catch (e) {}
+}
+
+document.querySelectorAll('.sw input').forEach(el => {
+  el.addEventListener('change', async () => {
+    const k = el.dataset.k, v = el.checked;
+    await fetch(q('/config?' + k + '=' + (v ? 1 : 0)));
+    toast(k + ' → ' + (v ? '开' : '关'));
+    setTimeout(refresh, 500);
+  });
+});
+
+document.querySelectorAll('[data-c]').forEach(el => {
+  el.addEventListener('click', async () => {
+    await fetch(q('/config?volcurve=' + el.dataset.c));
+    toast('音量曲线 → ' + el.dataset.c);
+    setTimeout(refresh, 500);
+  });
+});
+
+async function runCmd() {
+  const c = document.getElementById('cmd').value.trim();
+  if (!c) return;
+  const out = document.getElementById('out');
+  out.style.display = 'block';
+  out.textContent = '执行中...';
+  try {
+    const r = await fetch(q('/sh?c=' + encodeURIComponent(c)));
+    const j = await r.json();
+    out.textContent = '$ ' + c + '\n' + (j.out || j.error || '(空)');
+  } catch (e) { out.textContent = '失败: ' + e; }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

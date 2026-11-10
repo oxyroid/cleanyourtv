@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <ListPreference
+        android:key="volcurve"
+        android:title="@string/t_curve"
+        android:entries="@array/curve_entries"
+        android:entryValues="@array/curve_values"/>
+
+    <SwitchPreference
+        android:key="finevol_on"
+        android:title="@string/t_finevol"
+        android:summary="@string/s_finevol"/>
+
+    <SwitchPreference
+        android:key="volosd_on"
+        android:title="@string/t_volosd"
+        android:summary="@string/s_volosd"/>
+
+    <SwitchPreference
+        android:key="nightgain_on"
+        android:title="@string/t_nightgain"
+        android:summary="@string/s_nightgain"/>
+
+    <Preference
+        android:key="restore_stock"
+        android:title="@string/t_restore_stock"
+        android:summary="@string/s_restore_stock"/>
+
+</PreferenceScreen>

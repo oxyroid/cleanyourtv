@@ -71,14 +71,14 @@ keystone overlay UI, so it is doubly untouchable.
   property to 1 — from the shell, once, it survives reboots — makes the keys natively step ±1.
   The stock volume OSD (`VolumeDialog`, registered by the XGIMI SystemUI) has no settings toggle;
   it can only be silenced by unregistering it (`IAudioService.setVolumeController(null)`,
-  transaction 92 in this firmware), which needs the shell-held `STATUS_BAR_SERVICE`. Scout's
-  local-ADB channel does both, and layers **better-audio presets** on top (v18): 100-step 1:1,
+  transaction 92 in this firmware), which needs the shell-held `STATUS_BAR_SERVICE`. Pilot's
+  local-ADB channel does both, and layers **better-audio presets** on top: 100-step 1:1,
   30-step linear, or a 40-step perceptual curve whose quiet end steps exactly one internal value
   per press, all switchable without a loudness jump, plus DynamicsProcessing night attenuation
   (−18/12/6 dB at volume 1/2/3) and an optional logd bring-up (this ROM ships logd stopped).
   The one-way street to know about: un-registering the stock OSD is reversible only by a
   *device reboot* — the XGIMI SystemUI does not re-register its volume controller when the
-  process restarts. See [scout/README.md](scout/README.md).
+  process restarts. See [pilot/README.md](pilot/README.md).
 
 ## App store
 
@@ -88,17 +88,25 @@ but the market never creates an install session and DownloadManager stays empty,
 standalone Dangbei Market 6.0.6 (`com.dangbeimarket`) works fine; its APK is not published anywhere official, the
 direct download link `app.znds.com/update/dbmarket.apk` still answers.
 
+The stock launcher also **silently installs promoted apps**: a third-party package
+(`com.xiaodianshi.tv.yst`, a video service) appeared on this set with `installerPackageName=
+com.dangbei.leard.leradlauncher` — user-installed, no prompt observed. Re-scan `pm list packages`
+against your debloat list after the stock launcher has been on the network for a while.
+
 ## The two apps this set runs
 
 Both live under this folder, each with its own README, and neither is part of the debloat list:
 they are the way in and the home screen, not something the list removes.
 
-- [scout/](scout/README.md) — **DBOS Scout**, the rescue channel. A ~42 KB sideloaded APK whose only
+- [pilot/](pilot/README.md) — **DBOS Pilot**, the rescue channel. A ~58 KB sideloaded APK whose only
   irreplaceable job is running `setprop ctl.start adbd` from inside the TV, plus a persisted-job
-  self-start chain, a UDP presence broadcast, an HTTP console, a home guard and a volume fine-steps
-  counter. Without it, ADB is a one-shot: `pm disable-user` a package and reboot, and you have no way
-  back to the shell unless you walk to the TV with a USB stick again. Prebuilt:
-  `examples/dangbei-x9-pro/scout/dist/DBOSScout.apk`.
+  self-start chain, a UDP presence broadcast, an HTTP emergency console, a home guard (with a
+  launcher picker), better-audio volume curves, an optional logd bring-up, and a system-update
+  blocker that keeps the A/B `update_engine` stopped. It arms itself from the app — one
+  "self-grant" button does the accessibility and secure-settings grants over its embedded local-ADB
+  channel, no computer needed. Without it, ADB is a one-shot: `pm disable-user` a package and
+  reboot, and you have no way back to the shell unless you walk to the TV with a USB stick again.
+  Prebuilt: `examples/dangbei-x9-pro/pilot/dist/DBOSPilot.apk`.
 - [kido/](kido/DBOS.md) — **the Kido launcher fork** this set uses as Home, with the DBOS-specific
   changes (dual LEANBACK+LAUNCHER scan, the package-visibility `<queries>` fix, explicit launches,
   the Lerad launcher on the hidden list) and the build traps. Prebuilt:

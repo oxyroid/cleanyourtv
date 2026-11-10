@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DBOS Pilot</string>
+    <string name="homeguard_desc">Watches for the stock launcher coming to the front and switches back to the launcher you chose. Also shows the exact volume value when volume keys are pressed.</string>
+
+    <string name="status_title">Device</string>
+    <string name="screen_guard">Home guard</string>
+    <string name="screen_audio">Sound</string>
+    <string name="screen_maintenance">Remote &amp; maintenance</string>
+    <string name="screen_about">About</string>
+
+    <string name="t_adbd">ADB at boot</string>
+    <string name="s_adbd">Remote shells depend on this</string>
+    <string name="t_announce">IP broadcast</string>
+    <string name="s_announce">Finding this device on the LAN depends on this</string>
+    <string name="t_logd">logd</string>
+    <string name="s_logd">logcat depends on this</string>
+    <string name="t_ota">Block system updates</string>
+    <string name="s_ota">Keeps the system update engine stopped; off restores system updates</string>
+
+    <string name="t_curve">Volume curve</string>
+    <string name="s_curve_stock">Factory behavior: ±5 steps, stock volume bar, no overlay, no night gain</string>
+    <string name="s_curve_fine100">100 steps 1:1; the overlay shows the exact value</string>
+    <string name="s_curve_step30">30 steps, ±3–4 internal per press</string>
+    <string name="s_curve_perceptual">40-step perceptual curve; one internal value per step at the quiet end</string>
+    <string name="t_finevol">Volume keys</string>
+    <string name="s_finevol">The exact-value overlay and curve correction depend on this</string>
+    <string name="t_volosd">Hide stock volume bar</string>
+    <string name="s_volosd">The overlay takes over; the stock bar needs one reboot to come back</string>
+    <string name="t_nightgain">Night gain</string>
+    <string name="s_nightgain">Steps 1–3 get −18/−12/−6 dB extra attenuation</string>
+    <string name="t_restore_stock">Restore stock volume</string>
+    <string name="s_restore_stock">±5 steps and the stock bar (after one reboot)</string>
+
+    <string name="t_homeguard">Home guard</string>
+    <string name="s_homeguard">Switches back when the stock launcher takes the screen</string>
+    <string name="t_home_target">Launcher</string>
+    <string name="s_home_target_auto">Auto: first third-party launcher</string>
+    <string name="t_grant">Self-grant permissions</string>
+    <string name="s_grant">Grants accessibility + secure settings in one tap (no PC)</string>
+    <string name="t_repair">Repair guard</string>
+    <string name="s_repair">Re-arms the guard if its grant was cleared</string>
+    <string name="t_homefix">Boot home fix</string>
+    <string name="s_homefix">Fallback layer that launches your launcher after boot</string>
+
+    <string name="t_reset">Reset all settings</string>
+    <string name="s_reset">Everything back to Pilot defaults</string>
+    <string name="usage_title">Usage</string>
+    <string name="usage_summary">▲▼ Move · ⏎ OK · ◀▶ Adjust\nEmergency console: open http://&lt;this IP&gt;:8765/ui on a phone or PC</string>
+
+    <string name="vol_line">Volume %1$d/%2$d</string>
+    <string name="vol_line_detail">Volume %1$d/%2$d (%3$d/100)</string>
+    <string name="notif_title" translatable="false">DBOS Pilot</string>
+    <string name="notif_text">Console :%1$d · Discover :%2$d</string>
+
+    <string-array name="curve_entries">
+        <item>stock — factory (±5, stock bar)</item>
+        <item>fine100 — 100 steps, 1:1 (default)</item>
+        <item>step30 — 30 steps, ±3–4 per press</item>
+        <item>perceptual — 40 steps, finest at the quiet end</item>
+    </string-array>
+    <string-array name="curve_values">
+        <item>stock</item>
+        <item>fine100</item>
+        <item>step30</item>
+        <item>perceptual</item>
+    </string-array>
+</resources>

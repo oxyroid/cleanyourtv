@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <Preference
+        android:key="status"
+        android:title="@string/status_title"
+        android:selectable="false"/>
+
+    <Preference
+        android:key="screen_guard"
+        android:title="@string/screen_guard"
+        android:fragment="com.dbos.pilot.GuardFragment"/>
+
+    <Preference
+        android:key="screen_audio"
+        android:title="@string/screen_audio"
+        android:fragment="com.dbos.pilot.AudioFragment"/>
+
+    <Preference
+        android:key="screen_maintenance"
+        android:title="@string/screen_maintenance"
+        android:fragment="com.dbos.pilot.MaintenanceFragment"/>
+
+    <Preference
+        android:key="screen_about"
+        android:title="@string/screen_about"
+        android:fragment="com.dbos.pilot.AboutFragment"/>
+
+</PreferenceScreen>

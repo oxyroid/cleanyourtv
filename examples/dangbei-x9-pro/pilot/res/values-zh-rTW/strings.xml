@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DBOS 領航</string>
+    <string name="homeguard_desc">原廠桌面回到前景時自動切回你選擇的桌面；按音量鍵時顯示精確音量值。</string>
+
+    <string name="status_title">裝置</string>
+    <string name="screen_guard">桌面守護</string>
+    <string name="screen_audio">聲音</string>
+    <string name="screen_maintenance">遠端與維護</string>
+    <string name="screen_about">關於</string>
+
+    <string name="t_adbd">開機自啟 ADB</string>
+    <string name="s_adbd">遠端管理依賴此選項</string>
+    <string name="t_announce">IP 廣播</string>
+    <string name="s_announce">區域網路裝置探索依賴此選項</string>
+    <string name="t_logd">logd</string>
+    <string name="s_logd">logcat 依賴此選項</string>
+    <string name="t_ota">遮蔽系統更新</string>
+    <string name="s_ota">保持升級守護停止；關閉即恢復系統更新</string>
+
+    <string name="t_curve">音量曲線</string>
+    <string name="s_curve_stock">原廠行為：±5 步進、原廠音量條、無浮層、無夜間增益</string>
+    <string name="s_curve_fine100">100 階 1:1；浮層顯示精確值</string>
+    <string name="s_curve_step30">30 階，每按 ±3~4 內部值</string>
+    <string name="s_curve_perceptual">40 階感知曲線；低音段每階恰 1 內部值</string>
+    <string name="t_finevol">音量鍵</string>
+    <string name="s_finevol">精確讀數浮層與曲線校正依賴此選項</string>
+    <string name="t_volosd">隱藏原廠音量條</string>
+    <string name="s_volosd">浮層接管顯示；原廠條需重啟一次才回來</string>
+    <string name="t_nightgain">夜間微音量</string>
+    <string name="s_nightgain">1-3 檔額外衰減 18/12/6 dB</string>
+    <string name="t_restore_stock">復原原廠音量</string>
+    <string name="s_restore_stock">±5 步進與原廠音量條（重啟一次後生效）</string>
+
+    <string name="t_homeguard">桌面守護</string>
+    <string name="s_homeguard">原廠桌面佔據畫面時自動切回</string>
+    <string name="t_home_target">桌面</string>
+    <string name="s_home_target_auto">自動：第一個第三方桌面</string>
+    <string name="t_grant">自助授權</string>
+    <string name="s_grant">一鍵授予無障礙與系統設定權限（無需電腦）</string>
+    <string name="t_repair">修復守護</string>
+    <string name="s_repair">授權被清理後自動修回</string>
+    <string name="t_homefix">開機桌面糾偏</string>
+    <string name="s_homefix">開機後確保進入你的桌面的備用層</string>
+
+    <string name="t_reset">重設全部設定</string>
+    <string name="s_reset">一切恢復 Pilot 預設值</string>
+    <string name="usage_title">操作</string>
+    <string name="usage_summary">▲▼ 移動 · ⏎ 確認 · ◀▶ 調整\n應急主控台：手機或電腦開啟 http://&lt;本機 IP&gt;:8765/ui</string>
+
+    <string name="vol_line">音量 %1$d/%2$d</string>
+    <string name="vol_line_detail">音量 %1$d/%2$d（%3$d/100）</string>
+    <string name="notif_text">主控台 :%1$d · 探索 :%2$d</string>
+
+    <string-array name="curve_entries">
+        <item>stock — 原廠（±5、原廠條）</item>
+        <item>fine100 — 100 階 1:1（預設）</item>
+        <item>step30 — 30 階，每按 ±3~4</item>
+        <item>perceptual — 40 階感知，低音段最細</item>
+    </string-array>
+    <string-array name="curve_values">
+        <item>stock</item>
+        <item>fine100</item>
+        <item>step30</item>
+        <item>perceptual</item>
+    </string-array>
+</resources>
