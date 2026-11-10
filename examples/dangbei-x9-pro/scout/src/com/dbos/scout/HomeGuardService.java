@@ -80,10 +80,27 @@ public class HomeGuardService extends AccessibilityService {
      * 把 ROM 底层加的 4 格吃掉，净步进 ±1。
      *
      * volAnchor 同时给 ScoutService /vol 同步用（跨组件共享基线）。
+     *
+     * v16: 原厂 OSD 的刻度是内部值÷5，且 ROM 落的 ±5 和我们的回拨各刷一次 OSD，
+     * 观感"鬼畜"。对策：我方所有 setStreamVolume 一律不带 FLAG_SHOW_UI
+     * （ROM 自己那次 OSD 弹出无法阻止，但不再被我方叠加重绘），
+     * 精确值改由自己的 Toast 提示（如"音量 32/100"）。
      */
     public static volatile int volAnchor = -1;
 
     private volatile int volPending = -1;
+
+    /** v16: 单例 Toast——连按时先 cancel 再 show，读到最新值而不是排队堆叠 */
+    private android.widget.Toast volToast;
+
+    private void showVol(int v, int max) {
+        try {
+            if (volToast != null) volToast.cancel();
+            volToast = android.widget.Toast.makeText(this,
+                    "音量 " + v + "/" + max, android.widget.Toast.LENGTH_SHORT);
+            volToast.show();
+        } catch (Throwable ignored) {}
+    }
 
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
@@ -107,9 +124,9 @@ public class HomeGuardService extends AccessibilityService {
                     : Math.max(volAnchor - 1, 0);
             volAnchor = want;
             volPending = want;
+            showVol(want, max);                     // v16: 精确值 Toast（原厂 OSD 刻度只到÷5）
             if (cur != want)
-                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, want,
-                        android.media.AudioManager.FLAG_SHOW_UI);
+                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, want, 0);
             // 双重复核：100ms 先压一次（跳变窗口最小化），300ms 再兜底一次
             h.removeCallbacks(volVerify);
             h.postAtTime(volVerify, android.os.SystemClock.uptimeMillis() + 100);
@@ -136,7 +153,7 @@ public class HomeGuardService extends AccessibilityService {
                     return;
                 }
                 am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,
-                        volPending, android.media.AudioManager.FLAG_SHOW_UI);
+                        volPending, 0);
             } catch (Throwable ignored) {}
         }
     };

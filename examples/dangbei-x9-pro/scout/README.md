@@ -96,7 +96,10 @@ Defaults are on, because the guards are why a headless set stays manageable:
   so no key filter can soften it. Scout counters instead: on each press it sets the stream volume
   to `anchor ± 1` and re-checks at 100 ms and 300 ms to press the ROM's ±5 back down to a net ±1.
   The lowest non-zero step drops from 5/100 to 1/100, which is the difference between "fine at
-  night" and "not fine". The 100 ms window shows a brief ±5 flicker; that is the ROM landing first.
+  night" and "not fine". The stock OSD's scale only shows the internal value ÷ 5 and redraws once
+  per ROM step, so Scout's own corrections set no `FLAG_SHOW_UI` (no extra redraws) and a toast
+  with the exact value (`音量 32/100`) rides above the OSD. The 100 ms window still shows one
+  brief ±5 flicker from the ROM's own landing; that layer cannot be silenced.
 - **Announce** (`announce_on`): the UDP broadcasts above.
 - **Bridge activity**: DBOS resolves no standard Android Settings intents, so any third-party
   launcher's Settings button dies with "Can't open that here". Scout registers a transparent

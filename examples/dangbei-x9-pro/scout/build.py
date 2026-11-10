@@ -39,7 +39,8 @@ def run(*cmd, cwd=None):
 
 
 shutil.rmtree(OUT, ignore_errors=True)
-(OUT / "gen").mkdir(parents=True)
+if not (OUT / "gen").is_dir():
+    (OUT / "gen").mkdir(parents=True)
 
 print("[1/5] aapt2 compile + link")
 run(BT / "aapt2", "compile", "--dir", HERE / "res", "-o", OUT / "res.zip")
@@ -64,7 +65,11 @@ run("zip", "-q", "-j", "unsigned.apk", "classes.dex", cwd=OUT)
 run(BT / "zipalign", "-f", "4", OUT / "unsigned.apk", OUT / "aligned.apk")
 
 print("[5/5] sign")
-keystore = OUT / "debug.keystore"
+# The keystore lives beside the sources, not in out/ (wiped every build), so every build
+# signs with the same key and `adb install -r` upgrades in place. Committed on purpose:
+# it is the standard Android debug key (store/key pass "android"), and without it a
+# rebuilt Scout cannot install over the one already on the TV.
+keystore = HERE / "debug.keystore"
 if not keystore.is_file():
     run("keytool", "-genkeypair", "-keystore", keystore, "-alias", "androiddebugkey",
         "-storepass", "android", "-keypass", "android", "-keyalg", "RSA",
@@ -74,6 +79,7 @@ run(BT / "apksigner", "sign", "--ks", keystore, "--ks-pass", "pass:android",
     "--key-pass", "pass:android", "--out", OUT / "DBOSScout.apk", OUT / "aligned.apk")
 run(BT / "apksigner", "verify", OUT / "DBOSScout.apk")
 
-(HERE / "dist").mkdir(exist_ok=True)
+if not (HERE / "dist").is_dir():
+    (HERE / "dist").mkdir()
 shutil.copy(OUT / "DBOSScout.apk", HERE / "dist" / "DBOSScout.apk")
 print(f"OK: {(OUT / 'DBOSScout.apk').stat().st_size} bytes -> out/ and dist/")

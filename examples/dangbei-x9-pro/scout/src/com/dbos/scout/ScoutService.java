@@ -47,7 +47,7 @@ public class ScoutService extends Service {
     public static final int UDP_PORT = 9999;
     public static final int ANN_PORT = 9998;   // 主动广播端口（Mac 侧监听这里）
     public static final String TOKEN = "S9x7Kp2mQw4";
-    public static final String VER = "15.0";
+    public static final String VER = "16.0";
     public static final int NOTIF_ID = 1001;
 
     public static volatile String lastStatus = "init";
