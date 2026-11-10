@@ -1,0 +1,14 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Local SDK path — machine specific
+local.properties
+
+# OS junk
+.DS_Store
