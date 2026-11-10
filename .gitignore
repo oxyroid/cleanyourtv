@@ -26,3 +26,6 @@ bench-results/
 !examples/dangbei-x9-pro/scout/dist/*.apk
 launcher/hs_err_pid*.log
 launcher/replay_pid*.log
+
+# Scout build output (examples/dangbei-x9-pro/scout/build.py writes it fresh every run)
+examples/dangbei-x9-pro/scout/out/
