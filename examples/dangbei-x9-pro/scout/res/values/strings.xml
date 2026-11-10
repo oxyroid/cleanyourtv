@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DBOS Scout</string>
+    <string name="homeguard_desc">DBOS Scout 桌面守护：检测到原厂桌面回到前台时，自动切回你安装的第三方桌面（如 Kido）。不收集任何内容。</string>
+
+</resources>

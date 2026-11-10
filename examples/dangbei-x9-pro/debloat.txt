@@ -1,0 +1,67 @@
+# Dangbei X9 Pro projector (model X9 Pro, device horse_popular, MediaTek MT9681 / mt5877), Android 14 (SDK 34),
+# Dangbei DBOS 2.6 UI, firmware v6.9.15, fingerprint Dangbei/Product_xiaopao/horse_popular:14/UQ1A.240105.004.A1/v6.9.15:user/test-keys, China market.
+# XGIMI ODM: Dangbei's own stack is com.dangbei.* (the Lerad launcher family is com.dangbei.leard.* - the "leard"
+# typo is in the package name itself), and the projector hardware stack is com.xgimi.*. No GMS on this firmware:
+# no Play Store and no Google package at all; the app store is Dangbei's own.
+# Stock launcher: com.dangbei.leard.leradlauncher (SplashActivity answers HOME). No Live TV: there is no tuner,
+# the HDMI source UI is com.xgimi.xhplayer/.InputActivity.
+# Status: the nine packages below were taken off user 0 on a real unit on 2026-11-10 and checked across three
+# reboots the same day; focus, keystone, HDMI input, casting and the Bluetooth remote kept working.
+#
+# Apply:   TV_HOST=<projector ip> tools/disable.sh examples/dangbei-x9-pro/debloat.txt
+# Undo:    TV_HOST=<projector ip> tools/restore.sh examples/dangbei-x9-pro/debloat.txt
+#
+# ⚠ pm disable-user does NOT survive a cold boot on this firmware: while booting (about three minutes in) the
+# ROM restores the enabled state of /vendor/priv-app packages, so eight of the nine entries below come back
+# enabled at the next reboot (com.xgimi.mobilebridgeservice sits in /system/app and its disable holds).
+# The owner made them stick with pm uninstall --user 0, which keeps the APK on disk and removes the package
+# only for user 0, one at a time:
+#     adb shell pm uninstall --user 0 <package>
+# Undo for that:   adb shell cmd package install-existing <package>
+# A factory reset restores every user-0 removal as well. pm disable-user still works until the next reboot,
+# which is what the Apply line above does: a reversible way to try a package for an evening before committing.
+#
+# ADB entry (there are no Developer options to open):
+# The ROM ships adbd configured but never started: ro.adb.secure=0 and persist.adb.tcp.port=5555 are factory
+# set, but adbd does not run at boot and neither persist property starts it. com.android.settings is absent
+# and the DBOS settings page unlocks nothing, so the old "tap the build number seven times" Dangbei trick is
+# dead on DBOS 2.6. What does work: this ROM lets an ordinary sideloaded app run
+#     setprop ctl.start adbd
+# from its own process (no special permission dialog; a plain Runtime.exec from any installed app does it).
+# Start any app that can run a shell command, run that line, then "adb connect <ip>:5555" from the computer -
+# no pairing prompt, ro.adb.secure is 0. After every reboot adbd is off again and the line must be re-run.
+#
+# ⚠ DO NOT DISABLE on this firmware:
+# - com.dangbei.lerad.etna: focus/keystone/picture overlay UI AND uid 1000. On this ROM the shared-uid line in
+#   "dumpsys package" reads sharedUser=android.uid.system, not userId= - grep for both.
+# - com.xgimi.datareporter / com.xgimi.bugreportsender: uid 1000. Disabling datareporter crashed system_server
+#   45 seconds into every boot on this unit (see the folder's README.md). Reversible with
+#   "cmd package install-existing com.xgimi.datareporter" while ADB is still up.
+# - com.dangbei.leard.leradlauncher: the stock home. Removing it risks the boot, and its splash is where the
+#   set lands until a HOME press anyway; hand Home over with "cmd package set-home-activity" instead.
+# - com.xgimi.skin.black / com.xgimi.skin.lightblue: active RRO overlays; XGIMI's systemui is using them.
+# - com.sohu.inputmethod.sogou.tv: the only input method (default_input_method points at it).
+# - com.dolby.android.audio.service: Dolby audio processing.
+# - com.dangbei.zhushou / com.dangbei.zhushou.os: Dangbei Helper, both halves have launcher entries.
+# - com.dangbei.screencast / com.dangbei.miracast: casting receivers, kept by choice.
+# - com.dangbei.bootguide: first-boot guide, kept by choice.
+# - The com.xgimi.* hardware stack (autokst, windowsystem, tof, tvinput, xhplayer, bluetoothservice, xrmservice,
+#   soundermodeservice, xgimiservice, persistentservice, gmservice, mateservice, vcontrol, inuiserver,
+#   xgimiui.api, shutdown, remote, upgrade): optics, inputs, remote, Bluetooth and OTA.
+
+# Dangbei content apps
+com.dangbei.dbmusic.dbos.tab          # Dangbei Music (当贝音乐)
+com.dangbei.yungallery                 # cloud photo gallery (云相册)
+com.dangbei.lerad.videoposter          # video-poster wallpaper content feed
+com.monster.atmosphere                 # "atmosphere" ambient video scenes
+com.dangbei.dbcolormaster              # colour-master content app
+com.dangbei.tv.shortcuts              # Dangbei shortcuts content app
+
+# Dangbei telemetry
+com.dangbei.lerad.leradwatcher         # Lerad feedback watcher (empty shell, no UI)
+
+# Screensaver
+com.dangbei.lerad.screensaver          # Dangbei screensaver/dream; point settings at another dream afterwards
+
+# XGIMI leftovers (Dangbei UI on an XGIMI GMUI base)
+com.xgimi.mobilebridgeservice         # phone-bridge service from the XGIMI firmware, no client binds to it here

@@ -1,0 +1,6 @@
+{
+  "tv": "Dangbei X9 Pro projector (horse_popular, MediaTek MT9681)",
+  "os": "Android 14 (DBOS 2.6)",
+  "brand": "Dangbei",
+  "notes": "Dangbei's Lerad UI on an XGIMI GMUI base, no GMS: music, gallery, video-poster, atmosphere and colour content apps, the feedback watcher and an XGIMI bridge leftover off; `pm disable-user` is undone at boot for /vendor/priv-app packages, so the header documents the sticky way and its undo; adbd ships configured but never started, a sideloaded app starts it; keep `com.dangbei.lerad.etna` (uid 1000, focus UI) and the uid 1000 reporters (a boot crash loop when datareporter went off); ADB entry, the crash and the U-disk rescue in [README.md](dangbei-x9-pro/README.md)"
+}

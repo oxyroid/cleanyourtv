@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.dbos.scout">
+
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28"/>
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <!-- ServiceRepair：force-stop 会摘除无障碍授权，需写 secure settings 恢复（adb pm grant 授予） -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
+
+    <application
+        android:label="DBOS Scout"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/netsec"
+        android:hasCode="true">
+
+        <activity android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- v11: Intent 桥 —— 接住通用 launcher（Kido 等）发的标准设置/信号源 intent，
+             转发到当贝 ROM 真实存在的界面（这台 ROM 不实现任何标准 settings 入口） -->
+        <activity android:name=".BridgeActivity"
+            android:exported="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.settings.SETTINGS"/>
+                <action android:name="android.settings.WIFI_SETTINGS"/>
+                <action android:name="android.settings.WIRELESS_SETTINGS"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <data android:mimeType="vnd.android.cursor.item/channel"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+
+        <!-- v15: MarketActivity 跳板已撤除 —— 正版当贝市场（com.dangbeimarket）已安装，
+             转发 db://applist 的占位入口不再需要。 -->
+
+        <service android:name=".ScoutService"
+            android:exported="false"/>
+
+        <!-- v6: JobScheduler 自愈任务（系统拉进程，绕过广播管控） -->
+        <service android:name=".KeepJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE"/>
+
+        <!-- v10: 桌面守护（无障碍服务，监听原厂桌面回前台并自动切回用户 launcher） -->
+        <service android:name=".HomeGuardService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService"/>
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice"
+                android:resource="@xml/homeguard"/>
+        </service>
+
+        <receiver android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+            <!-- v6: 晚于开机窗口的系统广播。BOOT_COMPLETED 派发时进程拉起被 ROM 拦
+                 （startProcessLocked failed），但这些广播发生在开机几分钟之后，
+                 躲过了开机管控窗口：
+                 - TIME_SET: NTP 时间同步成功后必发（本机 auto_time=1）
+                 - DATE_CHANGED: 每天零点
+                 - TIMEZONE_CHANGED: 时区变化
+                 - NEXT_ALARM_CLOCK_CHANGED: 任何应用设置闹钟 -->
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET"/>
+                <action android:name="android.intent.action.DATE_CHANGED"/>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
+                <action android:name="android.app.action.NEXT_ALARM_CLOCK_CHANGED"/>
+            </intent-filter>
+            <!-- v6: 任何应用安装/更新/卸载都会触发，也是常用的开机后事件 -->
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED"/>
+                <action android:name="android.intent.action.PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.PACKAGE_REMOVED"/>
+                <data android:scheme="package"/>
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

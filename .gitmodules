@@ -1,0 +1,4 @@
+[submodule "examples/dangbei-x9-pro/kido"]
+	path = examples/dangbei-x9-pro/kido
+	url = /Users/oxy/WorkBuddy/2026-11-10-01-24-45/kido-dbos-fork
+	branch = dbos

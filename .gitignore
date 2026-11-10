@@ -19,5 +19,10 @@ bench-results/
 # Generated install bundles and JVM crash reports stay out of contributions.
 *.apk
 *.aab
+# Except the prebuilt rescue APK that ships with the Dangbei X9 Pro folder: the whole point of
+# that folder's scout/ is that the set has no other way in (no Developer options, no adb, no
+# store that works) - a reader with a bricked-ish unit cannot build the app first. The kido/
+# folder is a submodule with its own dist/ and its own rules.
+!examples/dangbei-x9-pro/scout/dist/*.apk
 launcher/hs_err_pid*.log
 launcher/replay_pid*.log
