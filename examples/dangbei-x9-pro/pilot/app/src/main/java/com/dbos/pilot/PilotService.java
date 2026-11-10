@@ -232,6 +232,11 @@ public class PilotService extends Service {
             String st = sh("getprop init.svc.adbd").trim();
             if (!"running".equals(st)) ensureAdbd(0);
 
+            // Fine volume: re-assert the native step prop and (while on)
+            // keep the stock bar unregistered — a reboot re-registers the
+            // stock VolumeController, and "replace" means it stays dead.
+            VolumeEngine.sync();
+
             // logd
             if (Config.get(this, Config.Key.LOGD)) {
                 String logd = sh("getprop init.svc.logd").trim();

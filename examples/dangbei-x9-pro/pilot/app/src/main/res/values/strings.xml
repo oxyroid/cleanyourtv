@@ -65,9 +65,9 @@
     <string name="s_ota">Keeps the system update engine stopped; off restores system updates</string>
 
     <string name="t_perc_vol">Fine volume</string>
-    <string name="s_perc_on">Volume keys step by 1 (0–100) with the stock volume bar, long-press auto-repeats</string>
-    <string name="s_perc_off">Factory behavior: factory stepping and the stock volume bar</string>
-    <string name="s_perc_detail">The level is the system\'s own 0–100 range, evenly split — one key press, one step. No curves, no extra stages. Turning it off restores factory behavior instantly.</string>
+    <string name="s_perc_on">Volume keys step by 1 (0–100), long-press auto-repeats; the Pilot overlay shows the level</string>
+    <string name="s_perc_off">Factory ±5 stepping; the stock volume bar returns on the next reboot</string>
+    <string name="s_perc_detail">The level is the system\'s own 0–100 range, evenly split — one key press, one step. No curves, no extra stages. While on, the Pilot overlay replaces the stock bar (it is unregistered until the next reboot); turning it off restores factory stepping instantly.</string>
 
     <string name="t_homeguard">Home guard</string>
     <string name="s_homeguard">Switches back when the stock launcher takes the screen</string>
@@ -90,6 +90,8 @@
     <string name="dep_adbd">Needs ADB running — turn “ADB at boot” on</string>
 
     <string name="about_legal">For learning purposes only. Please remove within 24 hours.</string>
+
+    <string name="vol_line">Volume %1$d/%2$d</string>
 
     <string name="notif_title" translatable="false">DBOS Pilot</string>
     <string name="notif_text">Console :%1$d · Discover :%2$d</string>

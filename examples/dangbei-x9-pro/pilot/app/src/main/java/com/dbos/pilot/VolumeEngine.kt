@@ -1,25 +1,39 @@
 package com.dbos.pilot
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
+import android.view.KeyEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Fine volume, done with one system switch: the ROM's AudioService branches
- * its native volume-key stepping on the prop persist.vendor.brand.simple —
- * 1 = one index per press (0..100 fine steps), 10 = the factory default.
- * That prop drives the keys, the long-press repeat and the stock volume bar;
- * everything stays system behavior, nothing for us to intercept or repaint.
+ * Fine volume = the system's own stepping + an overlay that REPLACES the
+ * stock volume bar.
  *
- *   on  — prop 1: ±1 per press.
- *   off — prop 10: factory ±5, exactly as shipped.
+ * Keys are never intercepted or consumed: the input policy steps AudioService
+ * before any accessibility filter runs (proven by dumpsys — see the git log of
+ * the previous rewrite), so stepping stays 100% native and there is no
+ * double-write. What the app owns is presentation and one prop:
  *
- * The only other job is the console API (`/vol?l=`), which writes the stream
- * index through the public AudioManager API.
+ *   persist.vendor.brand.simple — 1 = ±1 per press (0..100), 10 = factory ±5.
+ *   service call audio 92       — setVolumeController(null): kills the stock
+ *     bar. Irreversible until reboot (SystemUI only registers the controller
+ *     at boot) — which is exactly the "replace" semantics the user picked.
+ *     With the switch off we stop calling it; after one reboot the stock bar
+ *     is back for good.
+ *
+ * The overlay is painted from two harmless channels:
+ *   - accessibility key COPIES (~15ms) start a 120ms poll that repaints while
+ *     the system steps — the VOLUME_CHANGED broadcast alone lags ~560ms here;
+ *   - the VOLUME_CHANGED receiver is the backstop for external changes
+ *     (console API, voice assistants).
  */
 object VolumeEngine {
 
@@ -27,11 +41,13 @@ object VolumeEngine {
 
     private lateinit var app: Context
     private var started = false
+    private var poll: Job? = null
 
     @JvmStatic
     fun start(ctx: Context) {
         started = true
         app = ctx.applicationContext
+        app.registerReceiver(receiver, IntentFilter("android.media.VOLUME_CHANGED_ACTION"))
         // adbd may not be up at boot; one delayed sync. The maintenance
         // loop re-asserts it every round anyway.
         scope.launch {
@@ -54,13 +70,63 @@ object VolumeEngine {
         sync()
     }
 
-    /** Point the ROM's native stepping at the switch. Safe to call often. */
+    /** Point the prop at the switch; while on, keep the stock bar dead. */
     @JvmStatic
     fun sync() {
         val want = if (enabled) "1" else "10"
         if (LocalAdb.shell("getprop persist.vendor.brand.simple", 4000)?.trim() != want) {
             LocalAdb.shell("setprop persist.vendor.brand.simple $want", 4000)
         }
+        if (enabled) suppressStockBar()
+    }
+
+    private fun suppressStockBar() {
+        // setVolumeController(null) — transaction 92 on this firmware.
+        LocalAdb.shell("service call audio 92 i32 0", 4000)
+    }
+
+    /**
+     * Accessibility key copies, for display only. Never consumed — the
+     * system steps the volume regardless (input policy is first in line).
+     */
+    @JvmStatic
+    fun onKeyEvent(event: KeyEvent): Boolean {
+        if (!enabled) return false
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {} // else ignore
+            else -> return false
+        }
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                show(level()) // first paint before the system even lands the step
+                poll?.cancel()
+                poll = scope.launch {
+                    while (true) {
+                        delay(120)
+                        show(level()) // follows native stepping, incl. hold repeat
+                    }
+                }
+            }
+            else -> { // ACTION_UP (and any oddball action): stop following
+                poll?.cancel()
+                poll = null
+            }
+        }
+        return false
+    }
+
+    /** Backstop: external volume writes repaint the overlay too. */
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            if (i?.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+                    != AudioManager.STREAM_MUSIC) return
+            show(level())
+        }
+    }
+
+    private fun show(level: Int) {
+        if (!enabled || level < 0) return
+        HomeGuardService.showLevel(app, level)
     }
 
     /** Console/API set (`/vol?l=`): the public API, nothing else. */
@@ -69,6 +135,7 @@ object VolumeEngine {
         val am = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         am.setStreamVolume(AudioManager.STREAM_MUSIC, target.coerceIn(0, max), 0)
+        show(target.coerceIn(0, max))
     }
 
     /** The current level — the system's own stream index, nothing else. */

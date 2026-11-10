@@ -65,9 +65,9 @@
     <string name="s_ota">保持升级守护停止；关闭即恢复系统更新</string>
 
     <string name="t_perc_vol">精细音量</string>
-    <string name="s_perc_on">每次按键 ±1 档（0–100），长按连调，显示原厂音量条</string>
-    <string name="s_perc_off">原厂行为：原厂步进与原厂音量条</string>
-    <string name="s_perc_detail">音量就是系统的 0–100 档均分，一次按键一步。没有曲线，没有附加通道。关闭立即恢复原厂行为。</string>
+    <string name="s_perc_on">每次按键 ±1 档（0–100），长按连调；Pilot 浮层显示当前音量</string>
+    <string name="s_perc_off">原厂 ±5 步进；原厂音量条自设备下次重启起恢复</string>
+    <string name="s_perc_detail">音量就是系统的 0–100 档均分，一次按键一步。没有曲线，没有附加通道。开启期间由 Pilot 浮层替代原厂音量条（原厂条被解除注册，重启才会重新注册）；关闭后步进立即恢复原厂。</string>
 
     <string name="t_homeguard">桌面守护</string>
     <string name="s_homeguard">原厂桌面占据屏幕时自动切回</string>
@@ -90,6 +90,8 @@
     <string name="dep_adbd">需要 ADB 运行——请打开「开机自启 ADB」</string>
 
     <string name="about_legal">仅供学习目的。请在 24 小时内自行删除。</string>
+
+    <string name="vol_line">音量 %1$d/%2$d</string>
 
     <string name="notif_text">控制台 :%1$d · 发现 :%2$d</string>
 

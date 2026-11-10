@@ -26,9 +26,11 @@ import java.util.List;
  * Only the stock launcher's *main* HOME activity is corrected; its secondary
  * pages (the built-in market etc.) are pages the user opened and pass freely.
  *
- * Volume keys are deliberately not touched: the system's input policy
- * consumes them before any accessibility filter runs (see the onKeyEvent
- * note below and VolumeEngine for the fine-step switch).
+ * Volume keys are never consumed: the system's input policy steps them before
+ * any accessibility filter runs (see VolumeEngine). This service forwards key
+ * COPIES to the overlay painter and draws the fine-volume overlay — the one
+ * overlay surface this ROM hands to third parties (SYSTEM_ALERT_WINDOW is
+ * never granted), which, unlike toasts, does not throttle on rapid presses.
  */
 public class HomeGuardService extends AccessibilityService {
 
@@ -57,6 +59,14 @@ public class HomeGuardService extends AccessibilityService {
         instance = this;
         status = "connected";
         Log.i(TAG, "HomeGuard connected");
+        // The XML declares canRequestFilterKeyEvents; the flag itself must
+        // be armed at runtime or no key copies ever reach onKeyEvent.
+        try {
+            android.accessibilityservice.AccessibilityServiceInfo info = getServiceInfo();
+            info.flags |= android.accessibilityservice.AccessibilityServiceInfo
+                    .FLAG_REQUEST_FILTER_KEY_EVENTS;
+            setServiceInfo(info);
+        } catch (Throwable ignored) {}
         h.postDelayed(periodic, 3000);
     }
 
@@ -81,17 +91,109 @@ public class HomeGuardService extends AccessibilityService {
     public void onInterrupt() { status = "interrupted"; }
 
     /**
-     * Volume keys are NOT intercepted. The system's input policy
-     * (WindowManagerService) consumes them before any accessibility filter
-     * could, stepping AudioService directly; the fine-step switch is the ROM
-     * prop persist.vendor.brand.simple (see VolumeEngine). This service only
-     * watches windows — including the stock volume bar the system itself
-     * shows.
+     * Volume key COPIES feed the fine-volume overlay (VolumeEngine paints a
+     * 120ms poll from these; the system steps the stream regardless — the
+     * input policy consumes volume keys before any accessibility filter, so
+     * consuming here would change nothing anyway). Always returns false:
+     * stepping is 100% native, we are presentation only.
      */
     @Override
     protected boolean onKeyEvent(android.view.KeyEvent event) {
+        try {
+            return VolumeEngine.onKeyEvent(event);
+        } catch (Throwable ignored) {}
         return false;
     }
+
+    // ---------------- fine-volume overlay ----------------
+
+    private android.widget.TextView volView;
+    private boolean volViewAdded = false;
+
+    private int dp(int d) {
+        return Math.round(d * getResources().getDisplayMetrics().density);
+    }
+
+    /** All callers' threads converge here; window/toast UI is main-thread only. */
+    private static final android.os.Handler ui =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /**
+     * Display one level — the system's own stream index, 0..max. The
+     * accessibility overlay when the guard is connected, a toast otherwise.
+     * Called by VolumeEngine on every step, from any thread; always hops to
+     * the main thread (a background setText throws and gets swallowed,
+     * freezing the overlay at its first value — found the hard way).
+     */
+    static void showLevel(Context ctx, int level) {
+        final HomeGuardService svc = instance;
+        ui.post(new Runnable() {
+            @Override public void run() {
+                if (svc != null && connected) {
+                    try { svc.showVolInner(level); } catch (Throwable ignored) {}
+                } else {
+                    try {
+                        android.media.AudioManager am = (android.media.AudioManager)
+                                ctx.getSystemService(Context.AUDIO_SERVICE);
+                        int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+                        String txt = ctx.getString(R.string.vol_line, level, max);
+                        android.widget.Toast.makeText(ctx, txt,
+                                android.widget.Toast.LENGTH_SHORT).show();
+                    } catch (Throwable ignored) {}
+                }
+            }
+        });
+    }
+
+    private void showVolInner(int level) {
+        try {
+            if (volView == null) {
+                volView = new android.widget.TextView(this);
+                volView.setTextColor(0xFFFFFFFF);
+                volView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
+                android.graphics.drawable.GradientDrawable bg =
+                        new android.graphics.drawable.GradientDrawable();
+                bg.setColor(0xE6202020);
+                bg.setCornerRadius(dp(10));
+                volView.setBackground(bg);
+                volView.setPadding(dp(18), dp(10), dp(18), dp(10));
+            }
+            android.media.AudioManager am = (android.media.AudioManager)
+                    getSystemService(AUDIO_SERVICE);
+            int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
+            volView.setText(getString(R.string.vol_line, level, max));
+            if (!volViewAdded) {
+                android.view.WindowManager.LayoutParams lp =
+                        new android.view.WindowManager.LayoutParams(
+                                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                                        | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                                android.graphics.PixelFormat.TRANSLUCENT);
+                lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+                lp.y = dp(40);
+                ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
+                        .addView(volView, lp);
+                volViewAdded = true;
+            }
+            // Rapid presses only reset the hide timer; the window is reused.
+            h.removeCallbacks(volHide);
+            h.postDelayed(volHide, 1500);
+        } catch (Throwable ignored) {}
+    }
+
+    private final Runnable volHide = new Runnable() {
+        @Override public void run() {
+            try {
+                if (volViewAdded) {
+                    ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
+                            .removeView(volView);
+                    volViewAdded = false;
+                }
+            } catch (Throwable ignored) {}
+        }
+    };
 
     @Override
     public boolean onUnbind(Intent intent) {
@@ -105,6 +207,7 @@ public class HomeGuardService extends AccessibilityService {
         connected = false;
         instance = null;
         status = "destroyed";
+        try { volHide.run(); } catch (Throwable ignored) {}
         h.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
