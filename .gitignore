@@ -29,3 +29,4 @@ launcher/replay_pid*.log
 
 # Scout build output (examples/dangbei-x9-pro/scout/build.py writes it fresh every run)
 examples/dangbei-x9-pro/scout/out/
+local.properties
