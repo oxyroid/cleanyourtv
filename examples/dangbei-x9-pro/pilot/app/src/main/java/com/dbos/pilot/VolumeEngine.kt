@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
+import android.os.SystemClock
 import android.view.KeyEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,10 +31,13 @@ import kotlinx.coroutines.launch
  *     is back for good.
  *
  * The overlay is painted from two harmless channels:
- *   - accessibility key COPIES (~15ms) start a 120ms poll that repaints while
- *     the system steps — the VOLUME_CHANGED broadcast alone lags ~560ms here;
+ *   - accessibility key COPIES (~15ms) arm a follower: each copy pushes a
+ *     400ms deadline, a 40ms loop samples the stream until the deadline
+ *     lapses. UP never cancels it — a cancel there is what made short
+ *     presses wait for the slow channel below;
  *   - the VOLUME_CHANGED receiver is the backstop for external changes
- *     (console API, voice assistants).
+ *     (console API, voice assistants) — ~560ms late on this ROM, far too
+ *     slow to drive the UI, hence the follower above.
  */
 object VolumeEngine {
 
@@ -42,6 +46,9 @@ object VolumeEngine {
     private lateinit var app: Context
     private var started = false
     private var poll: Job? = null
+
+    /** The follower keeps sampling the stream until this uptime deadline. */
+    @Volatile private var followUntil = 0L
 
     @JvmStatic
     fun start(ctx: Context) {
@@ -112,20 +119,21 @@ object VolumeEngine {
             else -> return false
         }
         when (event.action) {
-            KeyEvent.ACTION_DOWN -> {
-                show(level()) // first paint before the system even lands the step
-                poll?.cancel()
-                poll = scope.launch {
-                    while (true) {
-                        delay(120)
-                        show(level()) // follows native stepping, incl. hold repeat
+            KeyEvent.ACTION_DOWN -> { // includes hold repeats (repeatCount > 0)
+                show(level()) // instant first paint; the step lands right about now
+                followUntil = SystemClock.uptimeMillis() + 400
+                if (poll?.isActive != true) {
+                    poll = scope.launch {
+                        while (SystemClock.uptimeMillis() < followUntil) {
+                            delay(40)
+                            show(level()) // catches the step(s) as they land
+                        }
                     }
                 }
             }
-            else -> { // ACTION_UP (and any oddball action): stop following
-                poll?.cancel()
-                poll = null
-            }
+            // ACTION_UP: deliberately no cancel — the loop lapses 400ms after
+            // the last key, so the final step is always caught (killing it
+            // here is what made short presses wait for the ~560ms broadcast).
         }
         return false
     }

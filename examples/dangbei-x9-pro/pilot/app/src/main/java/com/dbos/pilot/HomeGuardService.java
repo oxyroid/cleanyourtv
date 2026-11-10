@@ -91,8 +91,8 @@ public class HomeGuardService extends AccessibilityService {
     public void onInterrupt() { status = "interrupted"; }
 
     /**
-     * Volume key COPIES feed the fine-volume overlay (VolumeEngine paints a
-     * 120ms poll from these; the system steps the stream regardless — the
+     * Volume key COPIES feed the fine-volume overlay (VolumeEngine arms a
+     * 40ms follower from these; the system steps the stream regardless — the
      * input policy consumes volume keys before any accessibility filter, so
      * consuming here would change nothing anyway). Always returns false:
      * stepping is 100% native, we are presentation only.
