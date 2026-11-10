@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +18,9 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
@@ -138,16 +142,49 @@ fun RowCard(
                 }
             }
             if (state != null) {
-                BasicText(
-                    if (state) "●" else "○",
-                    style = TextStyle(
-                        color = if (state) cs.primary else cs.borderVariant,
-                        fontSize = 18.sp,
-                    ),
-                    modifier = Modifier.padding(start = 16.dp),
-                )
+                SwitchGlyph(on = state, enabled = enabled,
+                    modifier = Modifier.padding(start = 16.dp))
             }
         }
+    }
+}
+
+/**
+ * A drawn on/off switch: pill track + sliding thumb. Both position and color
+ * animate on state change so on vs off is unmistakable at TV distance — the
+ * old "●"/"○" text glyph read as the same small circle from the couch.
+ */
+@Composable
+private fun SwitchGlyph(on: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val track by animateColorAsState(
+        when {
+            !enabled -> cs.onSurface.copy(alpha = 0.10f)
+            on       -> cs.primary
+            else     -> cs.onSurface.copy(alpha = 0.22f)
+        },
+        label = "track",
+    )
+    val thumb by animateColorAsState(
+        when {
+            !enabled -> cs.onSurface.copy(alpha = 0.30f)
+            on       -> cs.onPrimary
+            else     -> cs.onSurfaceVariant
+        },
+        label = "thumb",
+    )
+    val x by animateDpAsState(if (on) 23.dp else 3.dp, label = "thumbX")
+    Box(
+        modifier
+            .size(width = 46.dp, height = 24.dp)
+            .background(track, RoundedCornerShape(12.dp))
+    ) {
+        Box(
+            Modifier
+                .offset(x = x, y = 3.dp)
+                .size(18.dp)
+                .background(thumb, CircleShape)
+        )
     }
 }
 
