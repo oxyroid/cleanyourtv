@@ -91,15 +91,28 @@ Defaults are on, because the guards are why a headless set stays manageable:
   (the first non-system HOME candidate), never hardcoded, and only the stock launcher's main HOME
   activity is corrected; its own secondary pages (the built-in app market and friends) are allowed.
   Needs the accessibility grant below.
-- **Volume fine-steps** (`finevol_on`): DBOS handles volume keys *below* the accessibility layer —
-  `interceptKeyBeforeQueueing` steps the internal volume by 5 before any service can see the key,
-  so no key filter can soften it. Scout counters instead: on each press it sets the stream volume
-  to `anchor ± 1` and re-checks at 100 ms and 300 ms to press the ROM's ±5 back down to a net ±1.
-  The lowest non-zero step drops from 5/100 to 1/100, which is the difference between "fine at
-  night" and "not fine". The stock OSD's scale only shows the internal value ÷ 5 and redraws once
-  per ROM step, so Scout's own corrections set no `FLAG_SHOW_UI` (no extra redraws) and a toast
-  with the exact value (`音量 32/100`) rides above the OSD. The 100 ms window still shows one
-  brief ±5 flicker from the ROM's own landing; that layer cannot be silenced.
+- **Volume native single-steps** (`finevol_on`): DBOS handles volume keys *below* the accessibility
+  layer — `interceptKeyBeforeQueueing` → `dispatchDirectAudioEvent` → `AudioService` steps the
+  volume before any key filter can see it. But the ×5 step turned out to be a ROM branch, not a
+  hardwired behavior: `AudioService.adjustSuggestedStreamVolume` reads
+  `persist.vendor.brand.simple` (factory value 10) and multiplies the step by 5 whenever it is
+  not 1. Setting the property to 1 — a one-time `setprop` that survives reboots, done by Scout
+  over its local ADB channel — makes the volume keys natively step ±1 with no correction hack
+  at all. The accessibility service then only *observes* the keys and shows the exact value
+  (`音量 32/100`) in a self-drawn overlay: the stock OSD's scale is the internal value ÷ 5 and
+  cannot show the single steps.
+- **Stock volume-OSD suppression** (`volosd_on`): the stock `VolumeDialog` is registered by the
+  XGIMI SystemUI as the system `IVolumeController`. Scout un-registers it —
+  `service call audio 92` is `IAudioService.setVolumeController(null)`, the transaction code read
+  from this very firmware's `IAudioService$Stub` — over the local ADB channel, where the shell
+  holds `STATUS_BAR_SERVICE`. SystemUI re-registers on every boot, so Scout re-checks the
+  controller every 5 minutes and cuts it again. Turning the switch off force-stops the
+  persistent SystemUI process, which makes it re-register and restores the stock bar.
+- **Night-gain** (`nightgain_on`): even 1/100 can be too loud at night, and below 1 there is only
+  mute. Scout attaches a `DynamicsProcessing` effect to the global output mix (session 0) and
+  attenuates by 18/12/6 dB while the volume sits at 1/2/3, giving the bottom three steps a
+  second, quieter half-step each. If the effect cannot attach (conflict with the Dolby chain,
+  missing effect library) the feature degrades to no attenuation and normal volume behavior.
 - **Announce** (`announce_on`): the UDP broadcasts above.
 - **Bridge activity**: DBOS resolves no standard Android Settings intents, so any third-party
   launcher's Settings button dies with "Can't open that here". Scout registers a transparent

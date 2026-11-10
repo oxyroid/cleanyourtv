@@ -47,7 +47,7 @@ public class ScoutService extends Service {
     public static final int UDP_PORT = 9999;
     public static final int ANN_PORT = 9998;   // 主动广播端口（Mac 侧监听这里）
     public static final String TOKEN = "S9x7Kp2mQw4";
-    public static final String VER = "16.0";
+    public static final String VER = "17.0";
     public static final int NOTIF_ID = 1001;
 
     public static volatile String lastStatus = "init";
@@ -102,6 +102,12 @@ public class ScoutService extends Service {
             }
         });
         }
+        // v17: 音量原生单格 + 掐原厂音量条（都要 shell 身份，经本机 adbd 通道）
+        pool.execute(new Runnable() {
+            @Override public void run() { volNativeLoop(0); }
+        });
+        // v17: 夜间增益（DynamicsProcessing 挂全局输出混音）随服务启动生效
+        applyNightGain(this);
     }
 
     @Override
@@ -169,6 +175,113 @@ public class ScoutService extends Service {
 
     private void sleep(long ms) {
         try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+    }
+
+    // ---------------- v17: 原生音量三件套 ----------------
+    //
+    // 1) 单格步进：persist.vendor.brand.simple=1（出厂 10 → ×5 步进）。
+    //    从 AudioService.adjustSuggestedStreamVolume 反汇编确认的 ROM 分支，
+    //    persist 属性，一次设置重启保留。
+    // 2) 掐原厂音量条：service call audio 92 = IAudioService.setVolumeController(null)
+    //    （事务号 92 从本机 framework.dex 的 IAudioService$Stub 静态字段实测提取，
+    //    shell 持有 STATUS_BAR_SERVICE）。开机后 SystemUI 会重新注册，
+    //    所以要周期复核把它再掐掉。
+    // 3) 两步都需要 shell 身份：Scout（uid 10xxx）没有权限，但 adbd 是我们自己
+    //    拉起的（ro.adb.secure=0），LocalAdb 从 127.0.0.1:5555 以 shell 跑命令。
+
+    public static volatile String volNativeState = "init";
+
+    private void volNativeLoop(int attempt) {
+        if (!running) return;
+        try {
+            // 通道前提：adbd 在跑（ensureAdbd 自己有重试）
+            String st = sh("getprop init.svc.adbd").trim();
+            if (!"running".equals(st)) ensureAdbd(0);
+
+            boolean fine = Config.get(this, Config.Key.FINEVOL);
+            boolean osd  = Config.get(this, Config.Key.VOLOSD);
+
+            // 1) 单格步进开关
+            String simple = sh("getprop persist.vendor.brand.simple").trim();
+            if (fine && !"1".equals(simple)) {
+                String r = LocalAdb.shell("setprop persist.vendor.brand.simple 1");
+                volNativeState = "brand.simple->1 " + (r.isEmpty() ? "ok" : r);
+            } else if (!fine && !"10".equals(simple)) {
+                String r = LocalAdb.shell("setprop persist.vendor.brand.simple 10");
+                volNativeState = "brand.simple->10 " + (r.isEmpty() ? "ok" : r);
+            }
+
+            // 2) 掐原厂音量条：SystemUI 注册着 binder 才需要动
+            if (osd) {
+                String ctrl = sh("dumpsys audio | grep mVolumeController").trim();
+                if (!ctrl.contains("(null")) {
+                    String r = LocalAdb.shell("service call audio 92");
+                    volNativeState += " | volosd " + (r.contains("00000000") ? "cut" : r);
+                }
+            } else if (attempt == 0) {
+                // 开关刚关：把控制器还给 SystemUI（persistent 进程，force-stop 自愈重注册）
+                String ctrl = sh("dumpsys audio | grep mVolumeController").trim();
+                if (ctrl.contains("(null")) {
+                    LocalAdb.shell("am force-stop com.xgimi.systemui");
+                    volNativeState = "volosd restore (systemui restarted)";
+                }
+            }
+
+            // 3) 夜间增益随复核刷新（DP 丢失/服务重启后自动重挂）
+            applyNightGain(this);
+        } catch (Throwable t) {
+            volNativeState = "volNative err: " + t;
+        }
+        if (attempt < 8) {
+            sleep(attempt < 3 ? 20000 : 60000);   // 开机头几分钟密一点，稳了转 5 分钟
+            volNativeLoop(attempt + 1);
+        } else {
+            sleep(5 * 60 * 1000);
+            volNativeLoop(6);                     // 稳态：每 5 分钟复核一轮
+        }
+    }
+
+    // ---------------- v17: 夜间微音量（DynamicsProcessing 增益） ----------------
+    //
+    // 用户痛点：内部音量 1/100 ≈ -59dB 在夜里仍然偏响，而 0 是彻底静音，1-0 之间没有中间档。
+    // 方案：在全局输出混音（session 0）挂 DynamicsProcessing 的输入增益，
+    // 把 1-3 档再压 18/12/6dB——相当于给最低三档各自劈出半档。
+    // 代价：DP 是输出链效果，所有媒体声音（扬声器/HDMI/蓝牙）统一衰减；
+    // 挂载失败（ROM 效果冲突/权限）则静默退化为无衰减，不挡正常听音。
+
+    private static android.media.audiofx.DynamicsProcessing dpEffect;
+    private static float dpGain = 1.0f;
+    private static boolean dpFailed = false;
+
+    /** 幂等应用：读当前音量 + NIGHTGAIN 开关 → 更新 DP 增益 */
+    static synchronized void applyNightGain(Context ctx) {
+        try {
+            android.media.AudioManager am = (android.media.AudioManager)
+                    ctx.getSystemService(Context.AUDIO_SERVICE);
+            int vol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
+            float db = 0f;
+            if (Config.get(ctx, Config.Key.NIGHTGAIN)) {
+                if (vol == 1) db = -18f;
+                else if (vol == 2) db = -12f;
+                else if (vol == 3) db = -6f;
+            }
+            float gain = (float) Math.pow(10, db / 20);
+            if (dpFailed && db == 0f) return;
+            if (dpEffect == null) {
+                if (db == 0f) return;             // 无需求不挂效果，保持输出链干净
+                try {
+                    dpEffect = new android.media.audiofx.DynamicsProcessing(0);
+                } catch (Throwable t) {
+                    dpFailed = true;
+                    volNativeState = "nightgain unavailable: " + t;
+                    return;
+                }
+            }
+            if (gain != dpGain) {
+                dpEffect.setInputGainAllChannelsTo(gain);
+                dpGain = gain;
+            }
+        } catch (Throwable ignored) {}
     }
 
     // ---------------- v8/v10: 桌面纠偏（备用层） ----------------
@@ -405,6 +518,18 @@ public class ScoutService extends Service {
                 Config.set(this, Config.Key.ANNOUNCE, !"0".equals(p.get(Config.Key.ANNOUNCE)));
             if (p.containsKey(Config.Key.FINEVOL))
                 Config.set(this, Config.Key.FINEVOL, !"0".equals(p.get(Config.Key.FINEVOL)));
+            if (p.containsKey(Config.Key.VOLOSD))
+                Config.set(this, Config.Key.VOLOSD, !"0".equals(p.get(Config.Key.VOLOSD)));
+            if (p.containsKey(Config.Key.NIGHTGAIN))
+                Config.set(this, Config.Key.NIGHTGAIN, !"0".equals(p.get(Config.Key.NIGHTGAIN)));
+            // v17: 音量三开关改动立即生效（不等下一轮复核）
+            if (p.containsKey(Config.Key.FINEVOL) || p.containsKey(Config.Key.VOLOSD)) {
+                pool.execute(new Runnable() {
+                    @Override public void run() { volNativeLoop(6); }
+                });
+            }
+            if (p.containsKey(Config.Key.NIGHTGAIN))
+                applyNightGain(this);
             return Config.toJson(this);
         }
         if ("/vol".equals(path)) {
@@ -422,7 +547,8 @@ public class ScoutService extends Service {
                 if (next < 0) next = 0;
                 if (next > max) next = max;
                 am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, next, 0);
-                HomeGuardService.volAnchor = next;   // v14: 同步对冲基线，防按键校正覆盖
+                HomeGuardService.volAnchor = next;   // v17: 仅作状态同步，无校正用途
+                applyNightGain(this);                 // 夜间增益跟随
                 cur = next;
             }
             return "{\"vol\":" + cur + ",\"max\":"
@@ -527,6 +653,8 @@ public class ScoutService extends Service {
         r.append(",\"guard\":").append(HomeGuardService.connected);
         r.append(",\"guardStatus\":").append(js(HomeGuardService.status));
         r.append(",\"guardTarget\":").append(js(HomeGuardService.target));
+        r.append(",\"volNative\":").append(js(volNativeState));
+        r.append(",\"brandSimple\":").append(js(sh("getprop persist.vendor.brand.simple").trim()));
         r.append(",\"wakelock\":").append(wakeLock != null && wakeLock.isHeld());
         r.append(",\"uptime\":").append(js(sh("cat /proc/uptime").trim()));
         r.append('}');

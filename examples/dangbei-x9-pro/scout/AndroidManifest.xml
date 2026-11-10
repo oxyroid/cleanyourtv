@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <!-- ServiceRepair：force-stop 会摘除无障碍授权，需写 secure settings 恢复（adb pm grant 授予） -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"/>
+    <!-- v17: DynamicsProcessing 挂全局输出混音（夜间微音量衰减） -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
 
     <application
         android:label="DBOS Scout"

@@ -64,9 +64,15 @@ keystone overlay UI, so it is doubly untouchable.
 - The ROM resolves no standard Settings intents (`ACTION_SETTINGS`, `ACTION_WIFI_SETTINGS`): third-party launchers
   need a bridge to Dangbei's real settings (`com.dangbei.lerad.etna/.MainActivity`) or their settings button dies
   with "Can't open that here".
-- Volume keys are handled by the ROM *below* the accessibility layer (`interceptKeyBeforeQueueing`, five internal
-  steps per press), so no key-filtering service can soften them; the HOME_KEY_SERVICE volume-ramp trade does not
-  apply as it does elsewhere.
+- Volume keys are handled by the ROM *below* the accessibility layer: `interceptKeyBeforeQueueing`
+  → `dispatchDirectAudioEvent` → `AudioService`, five internal steps per press, so no key-filtering
+  service can soften them. But the ×5 is a ROM branch, not hardware: `adjustSuggestedStreamVolume`
+  multiplies the step by 5 when `persist.vendor.brand.simple != 1` (factory value 10). Setting the
+  property to 1 — from the shell, once, it survives reboots — makes the keys natively step ±1.
+  The stock volume OSD (`VolumeDialog`, registered by the XGIMI SystemUI) has no settings toggle;
+  it can only be silenced by unregistering it (`IAudioService.setVolumeController(null)`,
+  transaction 92 in this firmware), which needs the shell-held `STATUS_BAR_SERVICE`. Scout's
+  local-ADB channel does both; see [scout/README.md](scout/README.md).
 
 ## App store
 

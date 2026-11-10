@@ -15,6 +15,8 @@ public final class Config {
         String ADBD      = "adbd_on";        // 开机自动拉起 adbd
         String ANNOUNCE  = "announce_on";   // UDP 主动广播 IP
         String FINEVOL   = "finevol_on";    // v13: 音量键细化为 1 格/按（原厂遥控一次跳 20 格）
+        String VOLOSD    = "volosd_on";     // v17: 隐藏原厂音量条（经本机 ADB 置空 VolumeController）
+        String NIGHTGAIN = "nightgain_on";  // v17: 夜间微音量（1-3 档输出混音 -18/-12/-6dB 衰减）
     }
 
     private static SharedPreferences sp(Context c) {
@@ -36,6 +38,8 @@ public final class Config {
              + ",\"" + Key.HOMEFIX + "\":" + get(c, Key.HOMEFIX)
              + ",\"" + Key.ADBD + "\":" + get(c, Key.ADBD)
              + ",\"" + Key.ANNOUNCE + "\":" + get(c, Key.ANNOUNCE)
-             + ",\"" + Key.FINEVOL + "\":" + get(c, Key.FINEVOL) + "}";
+             + ",\"" + Key.FINEVOL + "\":" + get(c, Key.FINEVOL)
+             + ",\"" + Key.VOLOSD + "\":" + get(c, Key.VOLOSD)
+             + ",\"" + Key.NIGHTGAIN + "\":" + get(c, Key.NIGHTGAIN) + "}";
     }
 }

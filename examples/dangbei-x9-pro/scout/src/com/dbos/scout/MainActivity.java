@@ -22,14 +22,18 @@ public class MainActivity extends Activity {
 
     private static final String[] KEYS = {
             Config.Key.HOMEGUARD, Config.Key.HOMEFIX, Config.Key.ADBD,
-            Config.Key.ANNOUNCE, Config.Key.FINEVOL};
-    private static final String[] NAMES = {"桌面守护", "开机桌面纠偏", "开机自动 ADB", "IP 广播", "音量细化"};
+            Config.Key.ANNOUNCE, Config.Key.FINEVOL, Config.Key.VOLOSD,
+            Config.Key.NIGHTGAIN};
+    private static final String[] NAMES = {"桌面守护", "开机桌面纠偏", "开机自动 ADB", "IP 广播",
+            "音量单格", "隐藏原厂音量条", "夜间微音量"};
     private static final String[] DESCS = {
             "原厂桌面冒头时自动切回你的 launcher",
             "开机后确保进入你的 launcher",
             "开机自动拉起 ADB（远程救生通道）",
             "向局域网广播位置，根治 IP 漂移",
-            "音量键改为 1 格/按（原厂一次 20 格，夜间太响）"};
+            "音量键原生 1 格/按（ROM 自带开关）+ 精确值浮层",
+            "按音量键不再弹原厂音量条（OSD 刻度只到 1/5）",
+            "音量 1-3 档时输出再衰减 18/12/6dB（夜间最低档太响）"};
 
     private final TextView[] rows = new TextView[KEYS.length];
     private int sel = 0;

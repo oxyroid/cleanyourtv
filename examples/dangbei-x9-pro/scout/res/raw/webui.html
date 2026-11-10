@@ -53,6 +53,7 @@
     <div class="kv"><b>桌面守护</b><span id="m-guard">-</span></div>
     <div class="kv"><b>守护目标</b><span id="m-target">-</span></div>
     <div class="kv"><b>服务状态</b><span id="m-status" style="font-size:12px">-</span></div>
+    <div class="kv"><b>音量链</b><span id="m-vol" style="font-size:12px">-</span></div>
   </div>
 
   <div class="card">
@@ -65,8 +66,12 @@
       <span class="sw"><input type="checkbox" data-k="adbd_on" id="sw3"><i></i></span></label>
     <label class="toggle"><div>IP 广播<div class="desc">开机后向局域网广播位置，根治 IP 漂移</div></div>
       <span class="sw"><input type="checkbox" data-k="announce_on" id="sw4"><i></i></span></label>
-    <label class="toggle"><div>音量细化<div class="desc">音量键改为 1 格/按（原厂一次跳 20 格，夜间最低档太响）</div></div>
+    <label class="toggle"><div>音量单格<div class="desc">音量键原生 1 格/按（ROM 自带开关 brand.simple）+ 精确值浮层</div></div>
       <span class="sw"><input type="checkbox" data-k="finevol_on" id="sw5"><i></i></span></label>
+    <label class="toggle"><div>隐藏原厂音量条<div class="desc">按音量键不再弹原厂条（其刻度只到 1/5，且重绘抖动）</div></div>
+      <span class="sw"><input type="checkbox" data-k="volosd_on" id="sw6"><i></i></span></label>
+    <label class="toggle"><div>夜间微音量<div class="desc">音量 1-3 档时输出再衰减 18/12/6dB（解决 1 档仍偏响）</div></div>
+      <span class="sw"><input type="checkbox" data-k="nightgain_on" id="sw7"><i></i></span></label>
   </div>
 
   <div class="card">
@@ -152,6 +157,9 @@ async function refresh() {
     document.getElementById('m-target').textContent = d.guardTarget || '-';
     const st = document.getElementById('m-status');
     st.textContent = (d.guardStatus ? d.guardStatus + ' | ' : '') + d.status;
+    const vv = document.getElementById('m-vol');
+    vv.textContent = 'brand.simple=' + (d.brandSimple || '?') + ' · ' + (d.volNative || '-');
+    vv.className = (d.brandSimple === '1') ? 'st-ok' : 'st-warn';
   } catch (e) {
     document.getElementById('dot').className = 'dot';
   }

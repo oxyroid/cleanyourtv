@@ -72,33 +72,85 @@ public class HomeGuardService extends AccessibilityService {
     public void onInterrupt() { status = "interrupted"; }
 
     /**
-     * v14: 音量对冲校正（拦截方案被实证无效后的修正）。
+     * v17: 音量键处理全面重构（对冲校正方案退役）。
      *
-     * 实测（2026-11-10 真遥控）：当贝 ROM 在 interceptKeyBeforeQueueing 层直接 +5/按，
-     * 发生在无障碍键过滤之前——onKeyEvent 返回 true 也拦不掉（净效果反而 +6）。
-     * 改为对冲：按键时记下"目标值 = 基线 ±1"，立即回拨 + 延迟复核，
-     * 把 ROM 底层加的 4 格吃掉，净步进 ±1。
+     * v14 的对冲校正源于当时的认知缺口：以为 ROM 的 ±5 拦不掉只能对冲。
+     * v17 取证（services.jar 反汇编 + 拉起 logd 抓链）发现完整路径：
+     *   interceptKeyBeforeQueueing → dispatchDirectAudioEvent
+     *     → AudioService.handleVolumeKey → adjustSuggestedStreamVolume
+     *       step = rescaleStep(10) → if persist.vendor.brand.simple != 1: step *= 5
+     * ×5 是 ROM 自家的"非简化品牌"分支——persist.vendor.brand.simple=1 就是
+     * 原厂预留的单格步进开关（persist 属性，重启保留），ScoutService 经
+     * 本机 ADB 通道设置它。音量变化从此全是原生行为。
      *
-     * volAnchor 同时给 ScoutService /vol 同步用（跨组件共享基线）。
+     * 无障碍服务在这里只剩一个职责：旁听音量键、弹自绘浮层显示精确值。
+     * 旁听发生在 ROM 处理之后（interceptKeyBeforeQueueing 在 a11y 过滤之前
+     * 已把音量调好），所以读到的就是新值。
      *
      * v16: 原厂 OSD 的刻度是内部值÷5，且 ROM 落的 ±5 和我们的回拨各刷一次 OSD，
      * 观感"鬼畜"。对策：我方所有 setStreamVolume 一律不带 FLAG_SHOW_UI
      * （ROM 自己那次 OSD 弹出无法阻止，但不再被我方叠加重绘），
-     * 精确值改由自己的 Toast 提示（如"音量 32/100"）。
+     * 精确值改由自己的浮层提示（如"音量 32/100"）。
+     *
+     * v16.1: Toast 被实测否决——每按一键 makeText 一个新 Toast，连按几下后
+     * 系统的 toast 队列/节流直接丢弃后续（"前几下弹、后面不弹"）。
+     * 改为 TYPE_ACCESSIBILITY_OVERLAY 自绘浮层：无障碍服务专有窗口类型，
+     * 无需额外权限、无次数限制，连按时只更新文本 + 重置 1.5s 隐藏计时。
      */
     public static volatile int volAnchor = -1;
 
-    private volatile int volPending = -1;
+    /** v16.1: 音量浮层（替代 Toast，绕开系统节流） */
+    private android.widget.TextView volView;
+    private boolean volViewAdded = false;
 
-    /** v16: 单例 Toast——连按时先 cancel 再 show，读到最新值而不是排队堆叠 */
-    private android.widget.Toast volToast;
+    private final Runnable volHide = new Runnable() {
+        @Override public void run() {
+            try {
+                if (volViewAdded) {
+                    ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
+                            .removeView(volView);
+                    volViewAdded = false;
+                }
+            } catch (Throwable ignored) {}
+        }
+    };
+
+    private int dp(int d) {
+        return Math.round(d * getResources().getDisplayMetrics().density);
+    }
 
     private void showVol(int v, int max) {
         try {
-            if (volToast != null) volToast.cancel();
-            volToast = android.widget.Toast.makeText(this,
-                    "音量 " + v + "/" + max, android.widget.Toast.LENGTH_SHORT);
-            volToast.show();
+            if (volView == null) {
+                volView = new android.widget.TextView(this);
+                volView.setTextColor(0xFFFFFFFF);
+                volView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15);
+                android.graphics.drawable.GradientDrawable bg =
+                        new android.graphics.drawable.GradientDrawable();
+                bg.setColor(0xE6202020);
+                bg.setCornerRadius(dp(10));
+                volView.setBackground(bg);
+                volView.setPadding(dp(18), dp(10), dp(18), dp(10));
+            }
+            volView.setText("音量 " + v + "/" + max);
+            if (!volViewAdded) {
+                android.view.WindowManager.LayoutParams lp =
+                        new android.view.WindowManager.LayoutParams(
+                                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                                android.view.WindowManager.LayoutParams.WRAP_CONTENT,
+                                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                                        | android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                                android.graphics.PixelFormat.TRANSLUCENT);
+                lp.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+                lp.y = dp(40);
+                ((android.view.WindowManager) getSystemService(WINDOW_SERVICE))
+                        .addView(volView, lp);
+                volViewAdded = true;
+            }
+            // 连按期间只重置隐藏计时，不重复创建窗口
+            h.removeCallbacks(volHide);
+            h.postDelayed(volHide, 1500);
         } catch (Throwable ignored) {}
     }
 
@@ -110,51 +162,27 @@ public class HomeGuardService extends AccessibilityService {
                     && k != android.view.KeyEvent.KEYCODE_VOLUME_DOWN)
                 return false;                            // 非音量键一律放行
             if (!Config.get(this, Config.Key.FINEVOL))
-                return false;                            // 开关关：不干预，原厂 ±5
-            if (event.getAction() != android.view.KeyEvent.ACTION_DOWN)
-                return true;                             // 吞掉 ACTION_UP
+                return false;                            // 开关关：不显示浮层，纯原生
             android.media.AudioManager am = (android.media.AudioManager)
                     getSystemService(AUDIO_SERVICE);
             int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
             int max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC);
-            // 基线失步（外部改过音量 / 首次）：以当前读数为准
-            if (volAnchor < 0 || Math.abs(cur - volAnchor) > 6) volAnchor = cur;
-            int want = k == android.view.KeyEvent.KEYCODE_VOLUME_UP
-                    ? Math.min(volAnchor + 1, max)
-                    : Math.max(volAnchor - 1, 0);
-            volAnchor = want;
-            volPending = want;
-            showVol(want, max);                     // v16: 精确值 Toast（原厂 OSD 刻度只到÷5）
-            if (cur != want)
-                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, want, 0);
-            // 双重复核：100ms 先压一次（跳变窗口最小化），300ms 再兜底一次
-            h.removeCallbacks(volVerify);
-            h.postAtTime(volVerify, android.os.SystemClock.uptimeMillis() + 100);
-            h.postAtTime(volVerify, android.os.SystemClock.uptimeMillis() + 300);
-            return true;
+            volAnchor = cur;
+            showVol(cur, max);                           // ROM 已落新值（queueing 层先于 a11y）
+            // v17: 夜间增益复核延迟到音量落地后（覆盖 0 静音/DP 挂载失败等场景）
+            h.removeCallbacks(volGain);
+            h.postDelayed(volGain, 350);
+            return false;                                // 纯旁听：一律放行
         } catch (Throwable tr) {
             Log.e(TAG, "onKeyEvent", tr);
             return false;                                // 异常时放行，绝不吞键
         }
     }
 
-    /** 延迟复核：把竞态中多加的 ±5 压回 volAnchor */
-    private final Runnable volVerify = new Runnable() {
+    /** v17: 夜间增益延迟复核（音量落地后由 ScoutService 决定衰减档） */
+    private final Runnable volGain = new Runnable() {
         @Override public void run() {
-            try {
-                if (volPending < 0) return;
-                android.media.AudioManager am = (android.media.AudioManager)
-                        getSystemService(AUDIO_SERVICE);
-                int cur = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
-                if (cur == volPending) return;
-                if (Math.abs(cur - volPending) > 6) {    // 外部大幅改动：尊重，不覆盖
-                    volAnchor = cur;
-                    volPending = -1;
-                    return;
-                }
-                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,
-                        volPending, 0);
-            } catch (Throwable ignored) {}
+            try { ScoutService.applyNightGain(HomeGuardService.this); } catch (Throwable ignored) {}
         }
     };
 
@@ -169,6 +197,7 @@ public class HomeGuardService extends AccessibilityService {
     public void onDestroy() {
         connected = false;
         status = "destroyed";
+        try { volHide.run(); } catch (Throwable ignored) {}   // v16.1: 撤掉音量浮层
         h.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
